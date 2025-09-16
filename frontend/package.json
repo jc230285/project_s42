@@ -1,0 +1,25 @@
+{
+  "name": "s42-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:push": "prisma db push"
+  },
+  "dependencies": {
+  "next": "13.4.19",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "next-auth": "4.22.1",
+    "prisma": "5.10.2",
+    "@prisma/client": "5.10.2",
+    "tailwindcss": "3.3.3",
+    "autoprefixer": "10.4.14",
+    "postcss": "8.4.24"
+  },
+  "devDependencies": {
+    "typescript": "5.3.3"
+  }
+}

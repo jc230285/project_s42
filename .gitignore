@@ -1,0 +1,20 @@
+# Node
+node_modules/
+
+# Env
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+.next/
+dist/
+
+# Misc
+*.swp
