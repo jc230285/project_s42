@@ -2,6 +2,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import mysql.connector
 import os
+import json
+from datetime import datetime, date
+
+# Custom JSON encoder for datetime objects
+def json_serial(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 app = FastAPI()
 
@@ -44,7 +52,9 @@ def get_land_plots_sites():
         data = cursor.fetchall()
         cursor.close()
         conn.close()
-        return JSONResponse(content=data)
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(data, default=json_serial))
+        return JSONResponse(content=json_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
@@ -57,7 +67,9 @@ def get_hoyanger_power_data():
         data = cursor.fetchall()
         cursor.close()
         conn.close()
-        return JSONResponse(content=data)
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(data, default=json_serial))
+        return JSONResponse(content=json_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
@@ -70,7 +82,9 @@ def get_users():
         users = cursor.fetchall()
         cursor.close()
         conn.close()
-        return JSONResponse(content=users)
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(users, default=json_serial))
+        return JSONResponse(content=json_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
@@ -83,6 +97,8 @@ def get_projects():
         projects = cursor.fetchall()
         cursor.close()
         conn.close()
-        return JSONResponse(content=projects)
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(projects, default=json_serial))
+        return JSONResponse(content=json_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
