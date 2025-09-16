@@ -137,7 +137,11 @@ def get_users(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM users")
+        
+        # First, ensure the users table exists
+        create_users_table(cursor)
+        
+        cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
         users = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -146,6 +150,138 @@ def get_users(current_user: dict = Depends(get_current_user)):
         return JSONResponse(content=json_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/groups")
+def get_groups(current_user: dict = Depends(get_current_user)):
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # First, ensure the groups table exists
+        create_groups_table(cursor)
+        
+        cursor.execute("SELECT * FROM groups ORDER BY name")
+        groups = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(groups, default=json_serial))
+        return JSONResponse(content=json_data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/users/create-or-update")
+def create_or_update_user(current_user: dict = Depends(get_current_user)):
+    try:
+        user_email = current_user.get("email")
+        user_name = current_user.get("name", "")
+        
+        if not user_email:
+            return JSONResponse(content={"error": "No email in user data"}, status_code=400)
+        
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Ensure tables exist
+        create_users_table(cursor)
+        create_groups_table(cursor)
+        
+        # Check if user exists
+        cursor.execute("SELECT * FROM users WHERE email = %s", (user_email,))
+        existing_user = cursor.fetchone()
+        
+        if existing_user:
+            # Update last login
+            cursor.execute(
+                "UPDATE users SET name = %s, last_login = NOW() WHERE email = %s",
+                (user_name, user_email)
+            )
+            user_id = existing_user['id']
+        else:
+            # Create new user
+            cursor.execute(
+                "INSERT INTO users (email, name, created_at, last_login) VALUES (%s, %s, NOW(), NOW())",
+                (user_email, user_name)
+            )
+            user_id = cursor.lastrowid
+        
+        # Assign user to group based on email domain
+        assign_user_to_group(cursor, user_id, user_email)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content={"message": "User created/updated successfully", "user_id": user_id})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+def create_users_table(cursor):
+    """Create users table if it doesn't exist"""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            name VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP,
+            group_id INT,
+            INDEX idx_email (email)
+        )
+    """)
+
+def create_groups_table(cursor):
+    """Create groups table if it doesn't exist"""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS groups (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) UNIQUE NOT NULL,
+            domain VARCHAR(255),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_domain (domain)
+        )
+    """)
+    
+    # Create default groups
+    default_groups = [
+        ("Guests", None),
+        ("Scale42", "scale-42.com"),
+        ("Scale42", "edbmotte.com"),
+    ]
+    
+    for group_name, domain in default_groups:
+        cursor.execute(
+            "INSERT IGNORE INTO groups (name, domain) VALUES (%s, %s)",
+            (group_name, domain)
+        )
+
+def assign_user_to_group(cursor, user_id, email):
+    """Assign user to appropriate group based on email domain"""
+    domain = email.split('@')[1] if '@' in email else None
+    
+    if domain:
+        # Try to find a group for this domain
+        cursor.execute("SELECT id FROM groups WHERE domain = %s", (domain,))
+        group = cursor.fetchone()
+        
+        if group:
+            group_id = group['id']
+        else:
+            # No specific group found, assign to Guests
+            cursor.execute("SELECT id FROM groups WHERE name = 'Guests' AND domain IS NULL")
+            guest_group = cursor.fetchone()
+            group_id = guest_group['id'] if guest_group else None
+    else:
+        # No domain, assign to Guests
+        cursor.execute("SELECT id FROM groups WHERE name = 'Guests' AND domain IS NULL")
+        guest_group = cursor.fetchone()
+        group_id = guest_group['id'] if guest_group else None
+    
+    if group_id:
+        cursor.execute(
+            "UPDATE users SET group_id = %s WHERE id = %s",
+            (group_id, user_id)
+        )
 
 @app.get("/projects")
 def get_projects(current_user: dict = Depends(get_current_user)):

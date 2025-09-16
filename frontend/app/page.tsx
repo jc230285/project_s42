@@ -21,26 +21,37 @@ export default function HomePage() {
         };
         const authToken = btoa(JSON.stringify(userInfo));
         
-        fetch("https://s42api.edbmotte.com/projects", {
+        // First, create/update user in the database
+        fetch("https://s42api.edbmotte.com/users/create-or-update", {
+          method: 'POST',
           headers: {
             'Authorization': `Bearer ${authToken}`,
             'Content-Type': 'application/json',
           }
         })
-          .then((res) => {
-            if (!res.ok) {
-              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        .then(() => {
+          // Then fetch projects data
+          return fetch("https://s42api.edbmotte.com/projects", {
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json',
             }
-            return res.json();
-          })
-          .then((data) => {
-            setProjects(data);
-            setLoading(false);
-          })
-          .catch((error) => {
-            console.error("Error fetching projects:", error);
-            setLoading(false);
           });
+        })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          setProjects(data);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error("Error fetching projects:", error);
+          setLoading(false);
+        });
       } else {
         setLoading(false);
       }
