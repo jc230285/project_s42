@@ -1,7 +1,7 @@
 import { getSession, signIn } from "next-auth/react";
 import { useEffect, useState } from "react";
 
-export default function HomePage() {
+export default function DashboardPage() {
   const [session, setSession] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
