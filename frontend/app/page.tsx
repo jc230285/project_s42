@@ -12,7 +12,7 @@ export default function HomePage() {
     getSession().then((sess) => {
       setSession(sess);
       if (sess) {
-        fetch("/api/projects")
+        fetch("https://s42api.edbmotte.com/projects")
           .then((res) => res.json())
           .then((data) => {
             setProjects(data);
