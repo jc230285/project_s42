@@ -9,6 +9,16 @@ app = FastAPI()
 def health():
     return {"status": "ok"}
 
+@app.get("/debug")
+def debug():
+    return {
+        "DB_HOST": os.getenv("DB_HOST", "NOT_SET"),
+        "DB_USER": os.getenv("DB_USER", "NOT_SET"), 
+        "DB_NAME": os.getenv("DB_NAME", "NOT_SET"),
+        "DB_PORT": os.getenv("DB_PORT", "NOT_SET"),
+        "fallback_host": "mariadb"
+    }
+
 def get_db():
     # Debug: print environment variables
     print(f"DB_HOST: {os.getenv('DB_HOST', 'NOT_SET')}")
