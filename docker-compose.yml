@@ -10,6 +10,8 @@ services:
       - "3100:3000"
     depends_on:
       - backend
+    networks:
+      - db-net
   backend:
     build:
       context: ./backend
@@ -20,5 +22,11 @@ services:
       - "8100:8000"
     depends_on:
       - db
+    networks:
+      - db-net
 volumes:
   db_data:
+
+networks:
+  db-net:
+    external: true
