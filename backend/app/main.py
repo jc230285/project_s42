@@ -38,9 +38,9 @@ def get_db():
     print(f"DB_PORT: {os.getenv('DB_PORT', 'NOT_SET')}")
     
     conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST", "mariadb"),  # Use mariadb as hostname like Zabbix
+        host=os.getenv("DB_HOST", "10.1.8.51"),  # Use your working IP
         user=os.getenv("DB_USER", "s42project"),
-        password=os.getenv("DB_PASSWORD", "JF/2M5dLtq@HYZl0"),
+        password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),  # Use your working password
         database=os.getenv("DB_NAME", "nocodb"),
         port=int(os.getenv("DB_PORT", "3306")),
     )
