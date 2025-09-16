@@ -10,11 +10,17 @@ def health():
     return {"status": "ok"}
 
 def get_db():
+    # Debug: print environment variables
+    print(f"DB_HOST: {os.getenv('DB_HOST', 'NOT_SET')}")
+    print(f"DB_USER: {os.getenv('DB_USER', 'NOT_SET')}")
+    print(f"DB_NAME: {os.getenv('DB_NAME', 'NOT_SET')}")
+    print(f"DB_PORT: {os.getenv('DB_PORT', 'NOT_SET')}")
+    
     conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME"),
+        host=os.getenv("DB_HOST", "10.1.8.15"),  # Fallback to your IP
+        user=os.getenv("DB_USER", "s42project"),
+        password=os.getenv("DB_PASSWORD", "JF/2M5dLtq@HYZl0"),
+        database=os.getenv("DB_NAME", "nocodb"),
         port=int(os.getenv("DB_PORT", "3306")),
     )
     return conn
