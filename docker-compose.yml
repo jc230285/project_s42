@@ -20,8 +20,6 @@ services:
       - ./.env
     ports:
       - "8100:8000"
-    depends_on:
-      - db
     networks:
       - db-net
 volumes:
