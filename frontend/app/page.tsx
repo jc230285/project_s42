@@ -12,10 +12,32 @@ export default function HomePage() {
     getSession().then((sess) => {
       setSession(sess);
       if (sess) {
-        fetch("https://s42api.edbmotte.com/projects")
-          .then((res) => res.json())
+        // Create a simple auth token with user info
+        const userInfo = {
+          email: sess.user?.email,
+          name: sess.user?.name,
+          authenticated: true
+        };
+        const authToken = btoa(JSON.stringify(userInfo));
+        
+        fetch("https://s42api.edbmotte.com/projects", {
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+          }
+        })
+          .then((res) => {
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+            return res.json();
+          })
           .then((data) => {
             setProjects(data);
+            setLoading(false);
+          })
+          .catch((error) => {
+            console.error("Error fetching projects:", error);
             setLoading(false);
           });
       } else {

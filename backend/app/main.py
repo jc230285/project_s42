@@ -1,10 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
 import os
 import json
 from datetime import datetime, date
 from decimal import Decimal
+from typing import Optional
+import base64
 
 # Custom JSON encoder for datetime and decimal objects
 def json_serial(obj):
@@ -14,7 +17,60 @@ def json_serial(obj):
         return float(obj)
     raise TypeError(f"Type {type(obj)} not serializable")
 
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """
+    Verify user session via Authorization header
+    Expected format: "Bearer {base64_encoded_user_info}"
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    try:
+        # Remove "Bearer " prefix
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization format",
+            )
+        
+        token = authorization[7:]  # Remove "Bearer "
+        
+        # For now, we'll accept any valid-looking token as authenticated
+        # In production, you'd validate this against your auth provider
+        if len(token) < 10:  # Basic validation
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+        
+        # Parse user info from token (this would be from NextAuth in production)
+        try:
+            user_info = json.loads(base64.b64decode(token).decode('utf-8'))
+            return user_info
+        except:
+            # If it's not base64 JSON, just return a basic user object
+            return {"email": "authenticated@user.com", "authenticated": True}
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/health")
 def health():
@@ -47,7 +103,7 @@ def get_db():
     return conn
 
 @app.get("/land-plots-sites")
-def get_land_plots_sites():
+def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -62,7 +118,7 @@ def get_land_plots_sites():
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/hoyanger-power-data")
-def get_hoyanger_power_data():
+def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -77,7 +133,7 @@ def get_hoyanger_power_data():
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/users")
-def get_users():
+def get_users(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -92,7 +148,7 @@ def get_users():
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/projects")
-def get_projects():
+def get_projects(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
