@@ -1,3 +1,22 @@
+@app.get("/land-plots-sites")
+def get_land_plots_sites():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM `Land Plots, Sites`")
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return JSONResponse(content=data)
+
+@app.get("/hoyanger-power-data")
+def get_hoyanger_power_data():
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM `Hoyanger Power Data`")
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return JSONResponse(content=data)
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse

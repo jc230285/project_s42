@@ -7,7 +7,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - "3000:3000"
+      - "3100:3000"
     depends_on:
       - backend
   backend:
@@ -17,7 +17,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - "8000:8000"
+      - "8100:8000"
     depends_on:
       - db
   db:
@@ -29,7 +29,7 @@ services:
       MYSQL_PASSWORD: JF/2M5dLtq@HYZl0
       MYSQL_ROOT_PASSWORD: rootpassword
     ports:
-      - "3306:3306"
+      - "3406:3306"
     volumes:
       - db_data:/var/lib/mysql
 volumes:
