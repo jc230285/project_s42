@@ -4,11 +4,14 @@ import mysql.connector
 import os
 import json
 from datetime import datetime, date
+from decimal import Decimal
 
-# Custom JSON encoder for datetime objects
+# Custom JSON encoder for datetime and decimal objects
 def json_serial(obj):
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    elif isinstance(obj, Decimal):
+        return float(obj)
     raise TypeError(f"Type {type(obj)} not serializable")
 
 app = FastAPI()
