@@ -1,3 +1,27 @@
+
+
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import mysql.connector
+import os
+
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+def get_db():
+    conn = mysql.connector.connect(
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME"),
+        port=int(os.getenv("DB_PORT", "3306")),
+    )
+    return conn
+
 @app.get("/land-plots-sites")
 def get_land_plots_sites():
     conn = get_db()
@@ -17,28 +41,6 @@ def get_hoyanger_power_data():
     cursor.close()
     conn.close()
     return JSONResponse(content=data)
-
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-import mysql.connector
-import os
-
-app = FastAPI()
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-def get_db():
-    conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME"),
-        port=int(os.getenv("DB_PORT", "3306")),
-    )
-    return conn
 
 @app.get("/users")
 def get_users():
