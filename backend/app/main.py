@@ -21,40 +21,52 @@ def get_db():
 
 @app.get("/land-plots-sites")
 def get_land_plots_sites():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM `Land Plots, Sites`")
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return JSONResponse(content=data)
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM `Land Plots, Sites`")
+        data = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return JSONResponse(content=data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/hoyanger-power-data")
 def get_hoyanger_power_data():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM `Hoyanger Power Data`")
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return JSONResponse(content=data)
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM `Hoyanger Power Data`")
+        data = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return JSONResponse(content=data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/users")
 def get_users():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM users")
-    users = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return JSONResponse(content=users)
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users")
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return JSONResponse(content=users)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/projects")
 def get_projects():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM Projects")
-    projects = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return JSONResponse(content=projects)
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM Projects")
+        projects = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return JSONResponse(content=projects)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
