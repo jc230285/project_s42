@@ -156,6 +156,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         { href: '/projects', icon: FolderOpen, label: 'Projects' },
         { href: '/sites', icon: MapPin, label: 'Sites' },
         { href: '/map', icon: Map, label: 'Map' },
+        { href: '/schema', icon: Map, label: 'Schema' },
       ]
     },
     {

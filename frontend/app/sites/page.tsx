@@ -60,9 +60,18 @@ export default function SitesPage() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Sites</h1>
-          <p className="mt-2 text-muted-foreground">Manage and monitor project sites</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Sites</h1>
+            <p className="mt-2 text-muted-foreground">Manage and monitor project sites</p>
+          </div>
+          <Button
+            onClick={handleNocoDBSync}
+            disabled={isSyncing}
+            className="ml-4"
+          >
+            {isSyncing ? 'Syncing...' : 'Run NocoDB Sync'}
+          </Button>
         </div>
 
         <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
@@ -77,13 +86,6 @@ export default function SitesPage() {
           <p className="text-muted-foreground mb-4">
             Synchronize NocoDB table schemas and metadata with the backend database.
           </p>
-
-          <Button
-            onClick={handleNocoDBSync}
-            disabled={isSyncing}
-          >
-            {isSyncing ? 'Syncing...' : 'Run NocoDB Sync'}
-          </Button>
         </div>
       </div>
     </DashboardLayout>

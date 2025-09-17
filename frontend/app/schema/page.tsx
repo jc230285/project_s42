@@ -11,6 +11,7 @@ export default function SchemaPage() {
   const router = useRouter();
   const [schemaInfo, setSchemaInfo] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (status !== "loading" && !session) {
@@ -39,6 +40,31 @@ export default function SchemaPage() {
     }
   };
 
+  const handleNocoDBSync = async () => {
+    setIsSyncing(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/nocodb-sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        toast.success(`NocoDB sync completed successfully! ${data.rows_updated || 0} updated, ${data.rows_inserted || 0} inserted, ${data.rows_deleted || 0} deleted.`);
+      } else {
+        toast.error(`NocoDB sync failed: ${data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      toast.error(`Failed to connect to backend: ${error}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -57,9 +83,18 @@ export default function SchemaPage() {
   return (
     <DashboardLayout>
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Schema</h1>
-          <p className="mt-2 text-muted-foreground">View and manage database schema information</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Schema</h1>
+            <p className="mt-2 text-muted-foreground">View and manage database schema information</p>
+          </div>
+          <Button
+            onClick={handleNocoDBSync}
+            disabled={isSyncing}
+            className="ml-4"
+          >
+            {isSyncing ? 'Syncing...' : 'Run NocoDB Sync'}
+          </Button>
         </div>
 
         <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
