@@ -1,24 +1,32 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Building2, Home, LogOut, Users, Menu, Settings } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { 
+  Home, 
+  LogOut, 
+  Users, 
+  Menu, 
+  FolderOpen, 
+  MapPin, 
+  Map, 
+  Building, 
+  CreditCard, 
+  Workflow, 
+  Database, 
+  HardDrive, 
+  Settings, 
+  LogIn,
+  Zap
+} from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-function UserMenu() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { data: session, status } = useSession();
+function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const { data: session } = useSession();
   const router = useRouter();
 
   async function handleSignOut() {
@@ -26,137 +34,243 @@ function UserMenu() {
     router.push('/');
   }
 
-  if (status === 'loading') {
-    return <div className="h-9 w-9 animate-pulse bg-gray-200 rounded-full" />;
-  }
+  // Initialize n8n chat widget
+  useEffect(() => {
+    if (session) {
+      // Add CSS for n8n chat
+      const link = document.createElement('link');
+      link.href = 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css';
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
 
-  if (!session?.user) {
-    return (
-      <Button asChild className="rounded-full bg-blue-600 hover:bg-blue-700">
-        <Link href="/api/auth/signin">Sign In</Link>
-      </Button>
-    );
-  }
+      // Add custom CSS for better styling
+      const customStyle = document.createElement('style');
+      customStyle.textContent = `
+        :root {
+          --chat--color-primary: #2563eb;
+          --chat--color-primary-shade-50: #1d4ed8;
+          --chat--color-primary-shade-100: #1e40af;
+          --chat--color-secondary: #10b981;
+          --chat--color-secondary-shade-50: #059669;
+          --chat--color-white: #ffffff;
+          --chat--color-light: #f8fafc;
+          --chat--color-light-shade-50: #f1f5f9;
+          --chat--color-light-shade-100: #e2e8f0;
+          --chat--color-medium: #94a3b8;
+          --chat--color-dark: #0f172a;
+          --chat--color-disabled: #64748b;
+          --chat--color-typing: #475569;
 
-  return (
-    <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-      <DropdownMenuTrigger asChild>
-        <Avatar className="cursor-pointer size-9">
-          <AvatarImage src={session.user.image || ''} alt={session.user.name || ''} />
-          <AvatarFallback>
-            {(session.user.name || session.user.email || 'U')
-              .split(' ')
-              .map((n) => n[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="flex flex-col gap-1">
-        <DropdownMenuItem className="cursor-pointer" asChild>
-          <Link href="/" className="flex w-full items-center">
-            <Home className="mr-2 h-4 w-4" />
-            <span>Dashboard</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem className="cursor-pointer" asChild>
-          <Link href="/users" className="flex w-full items-center">
-            <Users className="mr-2 h-4 w-4" />
-            <span>Users</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem className="cursor-pointer" onClick={handleSignOut}>
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Sign out</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
+          --chat--spacing: 1rem;
+          --chat--border-radius: 0.5rem;
+          --chat--transition-duration: 0.2s;
 
-function Header() {
-  return (
-    <header className="border-b border-gray-200 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-        <Link href="/" className="flex items-center">
-          <Building2 className="h-6 w-6 text-blue-600" />
-          <span className="ml-2 text-xl font-semibold text-gray-900">Scale42</span>
-        </Link>
-        <div className="flex items-center space-x-4">
-          <Suspense fallback={<div className="h-9 w-9 animate-pulse bg-gray-200 rounded-full" />}>
-            <UserMenu />
-          </Suspense>
-        </div>
-      </div>
-    </header>
-  );
-}
+          --chat--window--width: 400px;
+          --chat--window--height: 600px;
 
-function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+          --chat--header--background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+          --chat--header--color: #f8fafc;
+          --chat--header--border-bottom: 1px solid #334155;
+          
+          --chat--toggle--background: #2563eb;
+          --chat--toggle--hover--background: #1d4ed8;
+          --chat--toggle--active--background: #1e40af;
+          --chat--toggle--color: #ffffff;
+          --chat--toggle--size: 60px;
+          
+          --chat--message--bot--background: #f1f5f9;
+          --chat--message--bot--color: #0f172a;
+          --chat--message--user--background: #2563eb;
+          --chat--message--user--color: #ffffff;
+        }
+        
+        /* Hide the subtitle */
+        .n8n-chat .n8n-chat-subtitle {
+          display: none !important;
+        }
+      `;
+      document.head.appendChild(customStyle);
 
-  const navItems = [
-    { href: '/', icon: Home, label: 'Dashboard' },
-    { href: '/users', icon: Users, label: 'Users' },
+      // Add script for n8n chat
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.textContent = `
+        import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+        
+        createChat({
+          webhookUrl: 'https://n8n.edbmotte.com/webhook/28a43e86-8af5-41f8-97e4-c2bba9e6393e/chat',
+          mode: 'window',
+          showWelcomeScreen: false,
+          loadPreviousSession: true,
+          chatSessionKey: 'sessionId',
+          metadata: {
+            sessionId: 'scale42-shared-chat-session'
+          },
+          initialMessages: [
+            'Scale-42 Chat 👋',
+            'My name is Mr Gribberstad. How can I assist you today?'
+          ],
+          i18n: {
+            en: {
+              title: 'Scale-42 Chat 👋',
+              subtitle: '',
+              footer: '',
+              getStarted: 'New Conversation',
+              inputPlaceholder: 'Type your question...',
+            },
+          },
+        });
+      `;
+      document.head.appendChild(script);
+
+      // Cleanup function
+      return () => {
+        const existingLink = document.querySelector('link[href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css"]');
+        if (existingLink) {
+          document.head.removeChild(existingLink);
+        }
+        
+        const existingScript = document.querySelector('script[type="module"]');
+        if (existingScript && existingScript.textContent?.includes('createChat')) {
+          document.head.removeChild(existingScript);
+        }
+        
+        const existingStyle = document.querySelector('style');
+        if (existingStyle && existingStyle.textContent?.includes('--chat--color-primary')) {
+          document.head.removeChild(existingStyle);
+        }
+      };
+    }
+  }, [session]);
+
+  const menuSections = [
+    {
+      title: 'Dashboard',
+      items: [
+        { href: '/', icon: Home, label: 'Dashboard' },
+        { href: '/projects', icon: FolderOpen, label: 'Projects' },
+        { href: '/sites', icon: MapPin, label: 'Sites' },
+        { href: '/map', icon: Map, label: 'Map' },
+      ]
+    },
+    {
+      title: 'Hoyanger Power',
+      items: [
+        { href: '/hoyanger', icon: Zap, label: 'Overview' },
+      ]
+    },
+    {
+      title: 'Account Management',
+      items: [
+        { href: '/accounts', icon: CreditCard, label: 'Accounts' },
+      ]
+    },
+    {
+      title: 'Tools',
+      items: [
+        { href: '/tools/n8n', icon: Workflow, label: 'n8n' },
+        { href: '/tools/nocodb', icon: Database, label: 'nocodb' },
+        { href: '/tools/drive', icon: HardDrive, label: 'drive' },
+      ]
+    },
+    {
+      title: 'Settings',
+      items: [
+        { href: '/users', icon: Users, label: 'Users' },
+        ...(session 
+          ? [{ href: '#', icon: LogOut, label: 'Logout', action: 'signout' }]
+          : [{ href: '/login', icon: LogIn, label: 'Login' }]
+        ),
+      ]
+    }
   ];
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Header />
-      
-      <div className="flex flex-1">
-        {/* Mobile header */}
-        <div className="lg:hidden flex items-center justify-between bg-white border-b border-gray-200 p-4 w-full">
+    <div className="flex min-h-screen bg-background">
+      {/* Full-height Sidebar */}
+      <aside
+        className={`${
+          isSidebarOpen ? 'w-64' : 'w-16'
+        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col`}
+      >
+        {/* Sidebar Header with Logo and Toggle */}
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center">
-            <span className="font-medium">Menu</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-2 hover:bg-accent"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            {isSidebarOpen && (
+              <img
+                src="https://static.wixstatic.com/media/02157e_2734ffe4f4d44b319f9cc6c5f92628bf~mv2.png/v1/fill/w_506,h_128,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Scale42%20Logo%200_1%20-%20White%20-%202kpx.png"
+                alt="Scale42 Logo"
+                className="h-12 w-auto px-2 py-1 ml-3"
+              />
+            )}
           </div>
-          <Button
-            className="-mr-3"
-            variant="ghost"
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          >
-            <Menu className="h-6 w-6" />
-            <span className="sr-only">Toggle sidebar</span>
-          </Button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
-          <aside
-            className={`w-64 bg-gray-50 border-r border-gray-200 lg:block ${
-              isSidebarOpen ? 'block' : 'hidden'
-            } lg:relative absolute inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-              isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-            }`}
-          >
-            <nav className="h-full overflow-y-auto p-4">
-              {navItems.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  <Button
-                    variant={pathname === item.href ? 'secondary' : 'ghost'}
-                    className={`shadow-none my-1 w-full justify-start ${
-                      pathname === item.href ? 'bg-gray-100' : ''
-                    }`}
-                    onClick={() => setIsSidebarOpen(false)}
-                  >
-                    <item.icon className="h-4 w-4 mr-2" />
-                    {item.label}
-                  </Button>
-                </Link>
-              ))}
-            </nav>
-          </aside>
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto p-4">
+          {menuSections.map((section) => (
+            <div key={section.title} className="mb-6">
+              {/* Section Heading */}
+              {isSidebarOpen && (
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
+                  {section.title}
+                </h3>
+              )}
+              
+              {/* Section Items */}
+              {section.items.map((item) => {
+                if (item.action === 'signout') {
+                  return (
+                    <Button
+                      key="signout"
+                      variant="ghost"
+                      className={`w-full justify-start mb-2 text-destructive hover:text-destructive hover:bg-destructive/10 ${!isSidebarOpen ? 'px-2' : ''}`}
+                      onClick={handleSignOut}
+                      title={!isSidebarOpen ? item.label : undefined}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {isSidebarOpen && <span className="ml-3">{item.label}</span>}
+                    </Button>
+                  );
+                }
+                
+                return (
+                  <Link key={item.href} href={item.href}>
+                    <Button
+                      variant={pathname === item.href ? 'secondary' : 'ghost'}
+                      className={`w-full justify-start mb-2 ${
+                        pathname === item.href ? 'bg-accent text-accent-foreground' : ''
+                      } ${!isSidebarOpen ? 'px-2' : ''}`}
+                      title={!isSidebarOpen ? item.label : undefined}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {isSidebarOpen && <span className="ml-3">{item.label}</span>}
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+      </aside>
 
-          {/* Main content */}
-          <main className="flex-1 overflow-y-auto p-4 lg:p-8">
-            {children}
-          </main>
-        </div>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-6">
+          {children}
+        </main>
       </div>
-      
-      {/* Overlay for mobile */}
+
+      {/* Mobile Overlay */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
