@@ -8,6 +8,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional
 import base64
+import nocodb_sync
 
 # Custom JSON encoder for datetime and decimal objects
 def json_serial(obj):
@@ -66,7 +67,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000"],
+    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -297,3 +298,88 @@ def get_projects(current_user: dict = Depends(get_current_user)):
         return JSONResponse(content=json_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/test-import")
+def test_import():
+    try:
+        import nocodb_sync
+        return {"status": "success", "message": "Import successful"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/nocodb-sync")
+def run_nocodb_sync_endpoint():
+    """
+    Run the NocoDB schema synchronization
+    This endpoint triggers the sync process that updates the schema table
+    with metadata from source tables and pushes descriptions back
+    """
+    try:
+        import nocodb_sync
+        print("About to call run_nocodb_sync")
+        result = nocodb_sync.run_nocodb_sync()
+        print(f"Sync completed with status: {result.get('status')}")
+        return JSONResponse(content=result)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in nocodb-sync endpoint: {str(e)}")
+        print(f"Traceback: {error_details}")
+        return JSONResponse(content={
+            "status": "error",
+            "message": f"Failed to run NocoDB sync: {str(e)}",
+            "traceback": error_details
+        }, status_code=500)
+@app.get("/nocodb-schema-info")
+async def get_nocodb_schema_info():
+    """
+    Get comprehensive schema information from NocoDB
+    """
+    try:
+        # Get API versions
+        api_versions = nocodb_sync.check_api_versions()
+        
+        # Get all bases
+        bases = nocodb_sync.list_bases()
+        
+        # Get all tables
+        tables = nocodb_sync.list_tables()
+        
+        # Get detailed table metadata for each table
+        table_details = []
+        for table in tables:
+            try:
+                metadata = nocodb_sync.get_table_metadata(table['id'])
+                table_details.append({
+                    'table': table,
+                    'metadata': metadata
+                })
+            except Exception as e:
+                print(f"Error getting metadata for table {table.get('title', table['id'])}: {str(e)}")
+                table_details.append({
+                    'table': table,
+                    'metadata': None,
+                    'error': str(e)
+                })
+        
+        result = {
+            "status": "success",
+            "api_versions": api_versions,
+            "bases": bases,
+            "tables": tables,
+            "table_details": table_details,
+            "total_tables": len(tables),
+            "total_bases": len(bases)
+        }
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in nocodb-schema-info endpoint: {str(e)}")
+        print(f"Traceback: {error_details}")
+        return JSONResponse(content={
+            "status": "error",
+            "message": f"Failed to get NocoDB schema info: {str(e)}",
+            "traceback": error_details
+        }, status_code=500)
