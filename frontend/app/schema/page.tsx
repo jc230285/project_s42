@@ -10,7 +10,9 @@ export default function SchemaPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [schemaInfo, setSchemaInfo] = useState<any>(null);
+  const [schemaTableData, setSchemaTableData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingTable, setIsLoadingTable] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
@@ -37,6 +39,27 @@ export default function SchemaPage() {
       toast.error(`Failed to get schema info: ${error}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGetSchemaTable = async () => {
+    setIsLoadingTable(true);
+
+    try {
+      const response = await fetch('http://localhost:8000/nocodb-schema-table', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      setSchemaTableData(data);
+      toast.success('Schema table data retrieved successfully!');
+    } catch (error) {
+      toast.error(`Failed to get schema table: ${error}`);
+    } finally {
+      setIsLoadingTable(false);
     }
   };
 
@@ -118,6 +141,78 @@ export default function SchemaPage() {
                   {JSON.stringify(schemaInfo, null, 2)}
                 </pre>
               </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
+          <h2 className="text-lg font-medium text-foreground mb-4">Schema Table Data</h2>
+          <p className="text-muted-foreground mb-4">
+            View the complete schema table data from NocoDB, separated into tables based on the "Table" field.
+          </p>
+
+          <Button
+            onClick={handleGetSchemaTable}
+            disabled={isLoadingTable}
+          >
+            {isLoadingTable ? 'Loading...' : 'Get Schema Table Data'}
+          </Button>
+
+          {schemaTableData && schemaTableData.records && (
+            <div className="mt-6 space-y-8">
+              {(() => {
+                // Group records by the "Table" field
+                const groupedData: { [key: string]: any[] } = {};
+                schemaTableData.records.forEach((record: any) => {
+                  const tableName = record.Table || 'Unknown';
+                  if (!groupedData[tableName]) {
+                    groupedData[tableName] = [];
+                  }
+                  groupedData[tableName].push(record);
+                });
+
+                // Get the table names and sort them
+                const tableNames = Object.keys(groupedData).sort();
+
+                return tableNames.map((tableName) => (
+                  <div key={tableName} className="border border-border rounded-lg p-4">
+                    <h3 className="font-medium mb-4 text-foreground">Table: {tableName}</h3>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-border">
+                        <thead className="bg-muted">
+                          <tr>
+                            {groupedData[tableName].length > 0 && 
+                              Object.keys(groupedData[tableName][0])
+                                .filter(key => key !== 'Table') // Don't show the Table field in the table
+                                .map((key) => (
+                                <th key={key} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                  {key}
+                                </th>
+                              ))
+                            }
+                          </tr>
+                        </thead>
+                        <tbody className="bg-card divide-y divide-border">
+                          {groupedData[tableName].map((record, index) => (
+                            <tr key={index} className="hover:bg-muted/50">
+                              {Object.keys(record)
+                                .filter(key => key !== 'Table') // Don't show the Table field in the table
+                                .map((key) => (
+                                <td key={key} className="px-4 py-3 text-sm text-foreground">
+                                  {typeof record[key] === 'object' ? JSON.stringify(record[key]) : String(record[key] || '')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      {groupedData[tableName].length} records
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </div>
