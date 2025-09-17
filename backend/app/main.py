@@ -330,6 +330,7 @@ def run_nocodb_sync_endpoint():
             "message": f"Failed to run NocoDB sync: {str(e)}",
             "traceback": error_details
         }, status_code=500)
+
 @app.get("/nocodb-schema-info")
 async def get_nocodb_schema_info():
     """
@@ -342,12 +343,12 @@ async def get_nocodb_schema_info():
         # Get all bases
         bases = nocodb_sync.list_bases()
         
-        # Get all tables
-        tables = nocodb_sync.list_tables()
+        # Get tables for the configured base
+        tables = nocodb_sync.list_tables_for_base(nocodb_sync.BASE_ID)
         
         # Get detailed table metadata for each table
         table_details = []
-        for table in tables:
+        for table in tables.get("list", []):
             try:
                 metadata = nocodb_sync.get_table_metadata(table['id'])
                 table_details.append({
@@ -368,8 +369,8 @@ async def get_nocodb_schema_info():
             "bases": bases,
             "tables": tables,
             "table_details": table_details,
-            "total_tables": len(tables),
-            "total_bases": len(bases)
+            "total_tables": len(tables.get("list", [])),
+            "total_bases": len(bases.get("list", []))
         }
         
         return JSONResponse(content=result)
