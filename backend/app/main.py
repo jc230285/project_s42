@@ -383,3 +383,31 @@ async def get_nocodb_schema_info():
             "message": f"Failed to get NocoDB schema info: {str(e)}",
             "traceback": error_details
         }, status_code=500)
+
+@app.get("/nocodb-schema-table")
+async def get_nocodb_schema_table():
+    """
+    Get the complete schema table from NocoDB (table ID: m72851bbm1z0qul)
+    """
+    try:
+        table_id = "m72851bbm1z0qul"
+        records = nocodb_sync.list_table_records(table_id)
+        
+        result = {
+            "status": "success",
+            "table_id": table_id,
+            "records": records,
+            "total_records": len(records) if records else 0
+        }
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in nocodb-schema-table endpoint: {str(e)}")
+        print(f"Traceback: {error_details}")
+        return JSONResponse(content={
+            "status": "error",
+            "message": f"Failed to get NocoDB schema table: {str(e)}",
+            "traceback": error_details
+        }, status_code=500)
