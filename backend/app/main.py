@@ -463,3 +463,99 @@ def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
         return JSONResponse(content=json_data)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/api/map-data", tags=["Map"])
+def get_map_data(current_user: dict = Depends(get_current_user)):
+    """Get projects and sites data for map visualization"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get projects data
+        cursor.execute("""
+            SELECT
+                p.*,
+                COUNT(DISTINCT s.id) as site_count
+            FROM Projects p
+            LEFT JOIN `Land Plots, Sites` s ON p.id = s.project_id
+            GROUP BY p.id
+        """)
+        projects = cursor.fetchall()
+
+        # Get sites data with coordinates
+        cursor.execute("""
+            SELECT
+                s.*,
+                p.name as project_name,
+                p.status as project_status
+            FROM `Land Plots, Sites` s
+            LEFT JOIN Projects p ON s.project_id = p.id
+            WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+        """)
+        sites = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps({
+            "projects": projects,
+            "sites": sites
+        }, default=json_serial))
+
+        return JSONResponse(content=json_data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/api/map-stats", tags=["Map"])
+def get_map_stats(current_user: dict = Depends(get_current_user)):
+    """Get statistics for map display"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+
+        # Get project count
+        cursor.execute("SELECT COUNT(*) as total_projects FROM Projects")
+        project_result = cursor.fetchone()
+        total_projects = 0
+        if project_result and 'total_projects' in project_result:
+            try:
+                total_projects = int(project_result['total_projects'])  # type: ignore
+            except (ValueError, TypeError):
+                total_projects = 0
+
+        # Get site statistics
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_sites,
+                COUNT(CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN 1 END) as sites_with_coords,
+                COUNT(CASE WHEN geojson IS NOT NULL THEN 1 END) as sites_with_geojson
+            FROM `Land Plots, Sites`
+        """)
+        site_stats = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        total_sites = 0
+        sites_with_coords = 0
+        sites_with_geojson = 0
+
+        if site_stats:
+            try:
+                total_sites = int(site_stats.get('total_sites', 0))  # type: ignore
+                sites_with_coords = int(site_stats.get('sites_with_coords', 0))  # type: ignore
+                sites_with_geojson = int(site_stats.get('sites_with_geojson', 0))  # type: ignore
+            except (ValueError, TypeError, AttributeError):
+                pass
+
+        stats = {
+            "total_projects": total_projects,
+            "total_sites": total_sites,
+            "sites_with_coords": sites_with_coords,
+            "sites_with_geojson": sites_with_geojson
+        }
+
+        return JSONResponse(content=stats)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
