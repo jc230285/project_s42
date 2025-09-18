@@ -656,7 +656,8 @@ def run_nocodb_sync():
         # Define table IDs to process
         table_ids = [
             ("mftsk8hkw23m8q1", "Projects"),
-            ("mmqclkrvx9lbtpc", "Land Plots, Sites")
+            ("mmqclkrvx9lbtpc", "Land Plots, Sites"),
+            ("m72851bbm1z0qul", "schema")
         ]
 
         schema_table_id = "m72851bbm1z0qul"

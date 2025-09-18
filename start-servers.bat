@@ -30,3 +30,5 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+timeout /t 5 /nobreak >nul
+timeout /t 5 /nobreak >nul

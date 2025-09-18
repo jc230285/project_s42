@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import mysql.connector
 import os
 import json
@@ -8,7 +9,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional
 import base64
-import nocodb_sync
+# import nocodb_sync  # Temporarily commented out - module not found
 
 # Custom JSON encoder for datetime and decimal objects
 def json_serial(obj):
@@ -16,7 +17,19 @@ def json_serial(obj):
         return obj.isoformat()
     elif isinstance(obj, Decimal):
         return float(obj)
-    raise TypeError(f"Type {type(obj)} not serializable")
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='ignore')
+    elif obj is None:
+        return None
+    elif isinstance(obj, (int, float, str, bool)):
+        return obj
+    else:
+        # For any other type, try to convert to string
+        try:
+            return str(obj)
+        except Exception as e:
+            print(f"Warning: Could not serialize {type(obj)}: {e}")
+            return f"<unserializable {type(obj)}>"
 
 async def get_current_user(authorization: Optional[str] = Header(None)):
     """
@@ -69,15 +82,49 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://s42.edbmotte.com", "http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Accept-Language",
+        "Accept-Encoding",
+        "X-Requested-With",
+        "X-CSRF-Token",
+        "Cache-Control",
+        "Pragma",
+        "Expires",
+        "If-Modified-Since",
+        "If-None-Match",
+        "X-Forwarded-For",
+        "X-Forwarded-Proto",
+        "X-Real-IP",
+        "User-Agent",
+        "Referer",
+        "Origin"
+    ],
 )
 
-@app.get("/health")
+class CustomHeaderMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Add security headers to all responses
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
+
+app.add_middleware(CustomHeaderMiddleware)
+
+# Health endpoints
+@app.get("/health", tags=["Health"])
 def health():
     return {"status": "ok"}
 
-@app.get("/debug")
+@app.get("/debug", tags=["Health"])
 def debug():
     return {
         "DB_HOST": os.getenv("DB_HOST", "NOT_SET"),
@@ -103,37 +150,8 @@ def get_db():
     )
     return conn
 
-@app.get("/land-plots-sites")
-def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
-    try:
-        conn = get_db()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM `Land Plots, Sites`")
-        data = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        # Convert to JSON with datetime serialization
-        json_data = json.loads(json.dumps(data, default=json_serial))
-        return JSONResponse(content=json_data)
-    except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/hoyanger-power-data")
-def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
-    try:
-        conn = get_db()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM `Hoyanger Power Data`")
-        data = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        # Convert to JSON with datetime serialization
-        json_data = json.loads(json.dumps(data, default=json_serial))
-        return JSONResponse(content=json_data)
-    except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
-@app.get("/users")
+@app.get("/users", tags=["User Management"])
 def get_users(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
@@ -152,7 +170,7 @@ def get_users(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/groups")
+@app.get("/groups", tags=["User Management"])
 def get_groups(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
@@ -171,7 +189,7 @@ def get_groups(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.post("/users/create-or-update")
+@app.post("/users/create-or-update", tags=["User Management"])
 def create_or_update_user(current_user: dict = Depends(get_current_user)):
     try:
         user_email = current_user.get("email")
@@ -284,7 +302,23 @@ def assign_user_to_group(cursor, user_id, email):
             (group_id, user_id)
         )
 
-@app.get("/projects")
+
+@app.get("/land-plots-sites", tags=["Projects"])
+def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM `Land Plots, Sites`")
+        data = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(data, default=json_serial))
+        return JSONResponse(content=json_data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/projects", tags=["Projects"])
 def get_projects(current_user: dict = Depends(get_current_user)):
     try:
         conn = get_db()
@@ -299,15 +333,99 @@ def get_projects(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/test-import")
-def test_import():
-    try:
-        import nocodb_sync
-        return {"status": "success", "message": "Import successful"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
-@app.post("/nocodb-sync")
+@app.get("/schema", tags=["Projects"])
+def get_schema(current_user: dict = Depends(get_current_user)):
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM `schema`")
+        schema_data = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        # Extract order mappings from Category and Subcategory fields
+        category_order_map = {}
+        subcategory_order_map = {}
+        
+        for row in schema_data:
+            field_name = row.get('Field_Name')  # type: ignore
+            options_data = row.get('Options')  # type: ignore
+            
+            if field_name == 'Category' and options_data and isinstance(options_data, str):
+                # Parse the options string like "Database (Color: #ffdaf6, Order: 1, ID: sfn3s61u...)"
+                options_str = str(options_data)
+                if '|' in options_str:
+                    options = options_str.split(' | ')
+                    for option in options:
+                        if 'Order: ' in option:
+                            # Extract name and order
+                            name_part = option.split(' (Color:')[0].strip()
+                            order_part = option.split('Order: ')[1].split(',')[0].strip()
+                            try:
+                                category_order_map[name_part] = int(order_part)
+                            except ValueError:
+                                pass
+                
+            elif field_name == 'Subcategory' and options_data and isinstance(options_data, str):
+                # Parse the options string for subcategories
+                options_str = str(options_data)
+                if '|' in options_str:
+                    options = options_str.split(' | ')
+                    for option in options:
+                        if 'Order: ' in option:
+                            # Extract name and order
+                            name_part = option.split(' (Color:')[0].strip()
+                            order_part = option.split('Order: ')[1].split(',')[0].strip()
+                            try:
+                                subcategory_order_map[name_part] = int(order_part)
+                            except ValueError:
+                                pass
+        
+        # Sort the data using the order mappings
+        def sort_key(row):
+            category_set = row.get('Category', set())  # type: ignore
+            subcategory_set = row.get('Subcategory', set())  # type: ignore
+            field_order = row.get('Field_Order', 0)  # type: ignore
+            
+            # Extract the first value from the set (Category/Subcategory are stored as sets)
+            category = list(category_set)[0] if category_set else ''
+            subcategory = list(subcategory_set)[0] if subcategory_set else ''
+            
+            # Get order values, defaulting to high numbers for items not in the mapping
+            category_order = category_order_map.get(category, 999)  # type: ignore
+            subcategory_order = subcategory_order_map.get(subcategory, 999)  # type: ignore
+            
+            return (category_order, subcategory_order, field_order)
+        
+        # Add sort keys to each record before sorting
+        for row in schema_data:
+            category_set = row.get('Category', set())  # type: ignore
+            subcategory_set = row.get('Subcategory', set())  # type: ignore
+            field_order = row.get('Field_Order', 0)  # type: ignore
+            
+            # Extract the first value from the set (Category/Subcategory are stored as sets)
+            category = list(category_set)[0] if category_set else ''
+            subcategory = list(subcategory_set)[0] if subcategory_set else ''
+            
+            # Get order values, defaulting to high numbers for items not in the mapping
+            category_order = category_order_map.get(category, 999)  # type: ignore
+            subcategory_order = subcategory_order_map.get(subcategory, 999)  # type: ignore
+            
+            # Add sort keys to the record
+            row['category_order'] = category_order
+            row['subcategory_order'] = subcategory_order
+            # Note: field_order is already present as Field_Order, so we don't add it again
+        
+        schema_data.sort(key=sort_key)
+        
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(schema_data, default=json_serial))
+        return JSONResponse(content=json_data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/nocodb-sync", tags=["Projects"])
 def run_nocodb_sync_endpoint():
     """
     Run the NocoDB schema synchronization
@@ -331,84 +449,17 @@ def run_nocodb_sync_endpoint():
             "traceback": error_details
         }, status_code=500)
 
-@app.get("/nocodb-schema-info")
-async def get_nocodb_schema_info():
-    """
-    Get comprehensive schema information from NocoDB
-    """
+@app.get("/hoyanger-power-data", tags=["Hoyanger Power Data"])
+def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
     try:
-        # Get API versions
-        api_versions = nocodb_sync.check_api_versions()
-        
-        # Get all bases
-        bases = nocodb_sync.list_bases()
-        
-        # Get tables for the configured base
-        tables = nocodb_sync.list_tables_for_base(nocodb_sync.BASE_ID)
-        
-        # Get detailed table metadata for each table
-        table_details = []
-        for table in tables.get("list", []):
-            try:
-                metadata = nocodb_sync.get_table_metadata(table['id'])
-                table_details.append({
-                    'table': table,
-                    'metadata': metadata
-                })
-            except Exception as e:
-                print(f"Error getting metadata for table {table.get('title', table['id'])}: {str(e)}")
-                table_details.append({
-                    'table': table,
-                    'metadata': None,
-                    'error': str(e)
-                })
-        
-        result = {
-            "status": "success",
-            "api_versions": api_versions,
-            "bases": bases,
-            "tables": tables,
-            "table_details": table_details,
-            "total_tables": len(tables.get("list", [])),
-            "total_bases": len(bases.get("list", []))
-        }
-        
-        return JSONResponse(content=result)
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM `Hoyanger Power Data`")
+        data = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(data, default=json_serial))
+        return JSONResponse(content=json_data)
     except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Error in nocodb-schema-info endpoint: {str(e)}")
-        print(f"Traceback: {error_details}")
-        return JSONResponse(content={
-            "status": "error",
-            "message": f"Failed to get NocoDB schema info: {str(e)}",
-            "traceback": error_details
-        }, status_code=500)
-
-@app.get("/nocodb-schema-table")
-async def get_nocodb_schema_table():
-    """
-    Get the complete schema table from NocoDB (table ID: m72851bbm1z0qul)
-    """
-    try:
-        table_id = "m72851bbm1z0qul"
-        records = nocodb_sync.list_table_records(table_id)
-        
-        result = {
-            "status": "success",
-            "table_id": table_id,
-            "records": records,
-            "total_records": len(records) if records else 0
-        }
-        
-        return JSONResponse(content=result)
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Error in nocodb-schema-table endpoint: {str(e)}")
-        print(f"Traceback: {error_details}")
-        return JSONResponse(content={
-            "status": "error",
-            "message": f"Failed to get NocoDB schema table: {str(e)}",
-            "traceback": error_details
-        }, status_code=500)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
