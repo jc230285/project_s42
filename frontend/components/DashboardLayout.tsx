@@ -23,9 +23,9 @@ import {
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 
-function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayout({ children, initialSidebarCollapsed = false }: { children: React.ReactNode, initialSidebarCollapsed?: boolean }) {
   const pathname = usePathname();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!initialSidebarCollapsed);
   const { data: session } = useSession();
   const router = useRouter();
 

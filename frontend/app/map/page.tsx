@@ -1,8 +1,16 @@
 "use client";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { Loader } from "@googlemaps/js-api-loader";
 import DashboardLayout from '@/components/DashboardLayout';
+
+declare global {
+  interface Window {
+    google: any;
+  }
+}
 
 interface Project {
   id: number;
@@ -21,6 +29,11 @@ interface Site {
   project_name?: string;
   project_status?: string;
   geojson?: string;
+  Primary_Project_Partner?: string;
+  Project_Name?: string;
+  Country?: string;
+  Site_Address?: string;
+  landsize?: number;
   [key: string]: any;
 }
 
@@ -32,17 +45,178 @@ interface MapStats {
 }
 
 interface MapData {
-  projects: Project[];
   sites: Site[];
 }
+
+interface PartnersData {
+  partners: string[];
+}
+
+// Custom hook for managing Google Maps outside React lifecycle
+const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean) => {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const isInitializedRef = useRef(false);
+
+  useEffect(() => {
+    // Prevent multiple initializations
+    if (!googleMapsLoaded || !window.google?.maps || !mapContainerRef.current || isInitializedRef.current) return;
+
+    const initializeMap = async () => {
+      try {
+        console.log('Initializing Google Maps...');
+
+        // Double-check Google Maps availability
+        if (!window.google || !window.google.maps) {
+          console.error('Google Maps API not available');
+          return;
+        }
+
+        // Clear any existing content
+        if (mapContainerRef.current) {
+          mapContainerRef.current.innerHTML = '';
+        }
+
+        // Calculate center from sites
+        let center: google.maps.LatLngLiteral = { lat: 67.6397, lng: 15.9792 };
+        let zoom = 8;
+
+        if (sites.length > 0) {
+          const validSites = sites.filter(site => site.latitude && site.longitude);
+          if (validSites.length > 0) {
+            const bounds = new window.google.maps.LatLngBounds();
+            validSites.forEach(site => {
+              bounds.extend({ lat: site.latitude, lng: site.longitude });
+            });
+            center = bounds.getCenter().toJSON();
+          }
+        }
+
+        console.log('Creating map with center:', center);
+
+        // Create map instance with safer property access
+        const mapOptions: google.maps.MapOptions = {
+          center,
+          zoom,
+          mapId: 's42-map',
+          gestureHandling: 'greedy',
+          mapTypeControl: true,
+          mapTypeControlOptions: {
+            style: window.google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+            position: window.google.maps.ControlPosition.TOP_CENTER,
+          },
+          fullscreenControl: true,
+          streetViewControl: true,
+        };
+
+        const map = new window.google.maps.Map(mapContainerRef.current!, mapOptions);
+        mapInstanceRef.current = map;
+        isInitializedRef.current = true;
+
+        console.log('Map created successfully');
+
+        // Add markers with safer implementation
+        const newMarkers: google.maps.Marker[] = [];
+        sites.forEach(site => {
+          if (!site.latitude || !site.longitude) return;
+
+          try {
+            const marker = new window.google.maps.Marker({
+              position: { lat: site.latitude, lng: site.longitude },
+              map,
+              title: site.name,
+              icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: '#3b82f6',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 3,
+              },
+            });
+
+            // Add click listener with error handling
+            try {
+              marker.addListener('click', () => {
+                try {
+                  const infoWindow = new window.google.maps.InfoWindow({
+                    content: `
+                      <div style="min-width:300px;">
+                        <h3>${site.Plot_Name || site.name || 'Site'}</h3>
+                        <p>Coordinates: ${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}</p>
+                        ${site.Project_Name ? `<p>Project: ${site.Project_Name}</p>` : ''}
+                      </div>
+                    `,
+                  });
+                  infoWindow.open({ anchor: marker, map });
+                } catch (infoWindowError) {
+                  console.warn('Error opening info window:', infoWindowError);
+                }
+              });
+            } catch (listenerError) {
+              console.warn('Error adding marker listener:', listenerError);
+            }
+
+            newMarkers.push(marker);
+          } catch (markerError) {
+            console.error('Error creating marker for site:', site.name, markerError);
+          }
+        });
+
+        markersRef.current = newMarkers;
+        console.log('Added', newMarkers.length, 'markers');
+
+        // Add a small delay before considering the map fully ready
+        setTimeout(() => {
+          console.log('Map initialization completed successfully');
+        }, 500);
+
+      } catch (error) {
+        console.error('Error initializing map:', error);
+        isInitializedRef.current = false;
+      }
+    };
+
+    // Small delay to ensure Google Maps is fully loaded
+    const timeoutId = setTimeout(() => {
+      initializeMap();
+    }, 100);
+
+    // Cleanup function
+    return () => {
+      clearTimeout(timeoutId);
+      if (mapInstanceRef.current) {
+        console.log('Cleaning up map instance');
+        // Clean up markers
+        markersRef.current.forEach(marker => {
+          try {
+            window.google.maps.event.clearInstanceListeners(marker);
+            marker.setMap(null);
+          } catch (e) {
+            console.warn('Error cleaning up marker:', e);
+          }
+        });
+        markersRef.current = [];
+
+        // Clear map instance
+        mapInstanceRef.current = null;
+        isInitializedRef.current = false;
+      }
+    };
+  }, [sites, googleMapsLoaded]);
+
+  return mapContainerRef;
+};
 
 export default function MapPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const mapRef = useRef<HTMLDivElement>(null);
-  const googleMapRef = useRef<google.maps.Map | null>(null);
   const [mapData, setMapData] = useState<MapData | null>(null);
   const [mapStats, setMapStats] = useState<MapStats | null>(null);
+  const [partners, setPartners] = useState<string[]>([]);
+  const [selectedPartner, setSelectedPartner] = useState<string>("all");
+  const [menuCollapsed, setMenuCollapsed] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [layerToggles, setLayerToggles] = useState({
@@ -51,44 +225,115 @@ export default function MapPage() {
     labels: true,
     satellite: false,
   });
+  const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
+
+  // Use the isolated Google Maps hook
+  const mapContainerRef = useGoogleMaps(mapData?.sites || [], googleMapsLoaded);
 
   useEffect(() => {
+    console.log('Session status:', status);
+    console.log('Session data:', session);
     if (status !== "loading" && !session) {
+      console.log('No session, redirecting to home');
       router.push('/');
     }
   }, [session, status, router]);
 
   useEffect(() => {
     if (session) {
+      console.log('Session found, loading map data');
       loadMapData();
+    } else {
+      console.log('No session, skipping map data load');
     }
-  }, [session]);
+  }, [session, selectedPartner]);
+
+  // Load Google Maps API using the official loader
+  useEffect(() => {
+    const loadGoogleMaps = async () => {
+      // Prevent multiple loading attempts
+      if (googleMapsLoaded || window.google?.maps) {
+        console.log('Google Maps already loaded');
+        setGoogleMapsLoaded(true);
+        return;
+      }
+
+      try {
+        const loader = new Loader({
+          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+          version: "weekly",
+          libraries: []
+        });
+
+        await loader.load();
+        console.log('Google Maps API loaded successfully via official loader');
+        setGoogleMapsLoaded(true);
+      } catch (error) {
+        console.error('Error loading Google Maps API:', error);
+        setError('Failed to load Google Maps API. Please check your API key and internet connection.');
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      loadGoogleMaps();
+    }
+  }, [googleMapsLoaded]);
 
   const loadMapData = async () => {
     try {
+      console.log('Starting to load map data...');
       setLoading(true);
       setError(null);
 
+      // Create authentication headers - backend expects base64 encoded JSON
+      const userInfo = {
+        email: session?.user?.email || 'authenticated@user.com',
+        name: session?.user?.name || 'Authenticated User',
+        authenticated: true
+      };
+      const token = btoa(JSON.stringify(userInfo));
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+
+      console.log('Fetching partners...');
+      // Load partners first
+      const partnersResponse = await fetch('/api/map-partners', { headers });
+      console.log('Partners response:', partnersResponse.status, partnersResponse.ok);
+      if (partnersResponse.ok) {
+        const partnersData: PartnersData = await partnersResponse.json();
+        console.log('Partners data:', partnersData);
+        setPartners(partnersData.partners);
+      } else {
+        console.error('Partners API failed:', partnersResponse.status, await partnersResponse.text());
+      }
+
+      console.log('Fetching map data and stats...');
       // Load map data and stats in parallel
       const [dataResponse, statsResponse] = await Promise.all([
-        fetch('/api/map-data'),
-        fetch('/api/map-stats')
+        fetch(`/api/map-data?partner=${selectedPartner}`, { headers }),
+        fetch('/api/map-stats', { headers })
       ]);
 
+      console.log('Data response:', dataResponse.status, dataResponse.ok);
+      console.log('Stats response:', statsResponse.status, statsResponse.ok);
+
       if (!dataResponse.ok || !statsResponse.ok) {
-        throw new Error('Failed to load map data');
+        throw new Error(`API calls failed: data=${dataResponse.status}, stats=${statsResponse.status}`);
       }
 
       const data = await dataResponse.json();
       const stats = await statsResponse.json();
 
+      console.log('Map data loaded:', data);
+      console.log('Stats loaded:', stats);
+
       setMapData(data);
       setMapStats(stats);
 
-      // Initialize map after data is loaded
-      if (mapRef.current) {
-        await initializeMap(data);
-      }
+      // Don't initialize map here - let the useEffect handle it when container is ready
+      console.log('Map data loaded, waiting for container to be ready...');
     } catch (err) {
       console.error('Error loading map data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load map data');
@@ -97,156 +342,8 @@ export default function MapPage() {
     }
   };
 
-  const initializeMap = async (data: MapData) => {
-    if (!mapRef.current) return;
-
-    try {
-      // Load Google Maps
-      const { Map } = await google.maps.importLibrary("maps") as google.maps.MapsLibrary;
-      const { AdvancedMarkerElement } = await google.maps.importLibrary("marker") as google.maps.MarkerLibrary;
-
-      // Calculate center from sites with coordinates
-      let center = { lat: 67.6397, lng: 15.9792 }; // Default Norway center
-      let zoom = 8;
-
-      if (data.sites.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        data.sites.forEach(site => {
-          if (site.latitude && site.longitude) {
-            bounds.extend({ lat: site.latitude, lng: site.longitude });
-          }
-        });
-        center = bounds.getCenter().toJSON();
-      }
-
-      const map = new Map(mapRef.current, {
-        center,
-        zoom,
-        mapId: 's42-map',
-        gestureHandling: 'greedy',
-        mapTypeControl: true,
-        mapTypeControlOptions: {
-          style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
-          position: google.maps.ControlPosition.TOP_CENTER,
-        },
-        fullscreenControl: true,
-        streetViewControl: true,
-      });
-
-      googleMapRef.current = map;
-
-      // Add site markers
-      addSiteMarkers(data.sites, AdvancedMarkerElement, map);
-
-    } catch (err) {
-      console.error('Error initializing map:', err);
-      setError('Failed to initialize Google Maps');
-    }
-  };
-
-  const addSiteMarkers = (sites: Site[], AdvancedMarkerElement: any, map: google.maps.Map) => {
-    sites.forEach(site => {
-      if (!site.latitude || !site.longitude) return;
-
-      // Determine marker color based on project status
-      let markerColor = '#3b82f6'; // Default blue
-      if (site.project_status) {
-        switch (site.project_status.toLowerCase()) {
-          case 'active':
-            markerColor = '#10b981'; // Green
-            break;
-          case 'planned':
-            markerColor = '#f59e0b'; // Orange
-            break;
-          case 'maintenance':
-            markerColor = '#ef4444'; // Red
-            break;
-        }
-      }
-
-      // Create marker element
-      const markerElement = document.createElement('div');
-      markerElement.innerHTML = `
-        <div style="
-          background: ${markerColor};
-          color: white;
-          padding: 6px 10px;
-          border-radius: 16px;
-          font-size: 12px;
-          font-weight: 600;
-          font-family: 'Inter', sans-serif;
-          border: 2px solid white;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-          cursor: pointer;
-          transition: transform 0.2s ease;
-          min-width: 50px;
-          text-align: center;
-        "
-        onmouseover="this.style.transform='scale(1.1)'"
-        onmouseout="this.style.transform='scale(1)'">
-          ${site.name || 'Site'}
-        </div>
-      `;
-
-      const marker = new AdvancedMarkerElement({
-        map: layerToggles.sites ? map : null,
-        position: { lat: site.latitude, lng: site.longitude },
-        content: markerElement,
-        title: site.name
-      });
-
-      // Add click listener
-      marker.addListener('click', () => {
-        const infoWindow = new google.maps.InfoWindow({
-          content: `
-            <div style="min-width:300px; max-width:400px; font-family: 'Inter', sans-serif;">
-              <h3 style="margin: 0 0 10px 0; color: #1f2937; font-weight: 600;">${site.name}</h3>
-              <div style="margin-bottom: 12px; padding: 8px; background: #f3f4f6; border-radius: 6px; font-size: 12px; color: #6b7280;">
-                <strong>Coordinates:</strong> ${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}
-                ${site.project_name ? `<br/><strong>Project:</strong> ${site.project_name}` : ''}
-                ${site.project_status ? `<br/><strong>Status:</strong> <span style="color: ${markerColor}; font-weight: 600;">${site.project_status}</span>` : ''}
-              </div>
-              ${site.description ? `
-              <div style="margin-bottom: 12px;">
-                <strong style="color: #374151;">Description:</strong><br/>
-                <span style="color: #6b7280;">${site.description.substring(0, 150)}${site.description.length > 150 ? '...' : ''}</span>
-              </div>
-              ` : ''}
-              <div style="margin-top: 12px; text-align: center;">
-                <button onclick="window.location.href='/sites?site=${site.id}'" style="
-                  padding: 8px 16px;
-                  border-radius: 6px;
-                  border: 1px solid #d1d5db;
-                  background: ${markerColor};
-                  color: white;
-                  cursor: pointer;
-                  font-weight: 500;
-                  transition: background-color 0.2s;
-                "
-                onmouseover="this.style.opacity='0.9'"
-                onmouseout="this.style.opacity='1'">
-                  View Site Details
-                </button>
-              </div>
-            </div>
-          `
-        });
-
-        infoWindow.open({ anchor: marker, map });
-      });
-    });
-  };
-
   const toggleLayer = (layer: keyof typeof layerToggles) => {
-    setLayerToggles(prev => {
-      const newToggles = { ...prev, [layer]: !prev[layer] };
-
-      if (layer === 'satellite') {
-        googleMapRef.current?.setMapTypeId(newToggles.satellite ? 'satellite' : 'roadmap');
-      }
-
-      return newToggles;
-    });
+    setLayerToggles(prev => ({ ...prev, [layer]: !prev[layer] }));
   };
 
   if (status === "loading" || loading) {
@@ -266,162 +363,200 @@ export default function MapPage() {
 
   if (error) {
     return (
-      <DashboardLayout>
-        <div className="space-y-8">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Map View</h1>
-            <p className="mt-2 text-muted-foreground">Interactive map of project locations</p>
-          </div>
-          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-6">
-            <h2 className="text-lg font-medium text-destructive mb-2">Error Loading Map</h2>
-            <p className="text-muted-foreground">{error}</p>
-            <button
-              onClick={loadMapData}
-              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              Retry
-            </button>
-          </div>
+      <div className="h-screen w-screen bg-background flex items-center justify-center">
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-6 max-w-md">
+          <h2 className="text-lg font-medium text-destructive mb-2">Error Loading Map</h2>
+          <p className="text-muted-foreground">{error}</p>
+          <button
+            onClick={loadMapData}
+            className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+          >
+            Retry
+          </button>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Map View</h1>
-          <p className="mt-2 text-muted-foreground">Interactive map of project locations</p>
+    <div className="h-screen w-screen relative overflow-hidden">
+      {/* Google Maps Container - Isolated from React */}
+      <div
+        ref={mapContainerRef}
+        className="w-full h-full"
+        style={{
+          backgroundColor: '#f0f0f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        {!googleMapsLoaded && (
+          <div className="text-center text-gray-600">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <div>Loading Map...</div>
+          </div>
+        )}
+      </div>
+
+      {/* Loading overlay */}
+      {loading && (
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <div className="text-lg font-medium mb-2">Loading Map Data...</div>
+            <div className="text-sm text-muted-foreground">Fetching sites and statistics</div>
+          </div>
+        </div>
+      )}
+
+      {/* Menu Toggle Button */}
+      <button
+        onClick={() => setMenuCollapsed(!menuCollapsed)}
+        className="absolute top-4 left-4 z-20 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-2 shadow-lg hover:bg-muted/50 transition-colors"
+        title={menuCollapsed ? "Show Controls" : "Hide Controls"}
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={menuCollapsed ? "M4 6h16M4 12h16M4 18h16" : "M6 18L18 6M6 6l12 12"} />
+        </svg>
+      </button>
+
+      {/* Control Panel */}
+      <div className={`${menuCollapsed ? "hidden" : ""} absolute top-4 left-16 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-4 shadow-lg max-w-sm`}>
+        <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          Map Layers
+        </h3>
+
+        {/* Partner Filter */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-foreground mb-2">
+            Filter by Partner
+          </label>
+          <select
+            value={selectedPartner}
+            onChange={(e) => setSelectedPartner(e.target.value)}
+            className="w-full px-3 py-2 bg-background border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="all">All Partners</option>
+            {partners.map((partner) => (
+              <option key={partner} value={partner}>
+                {partner}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="relative">
-          {/* Map Container */}
-          <div
-            ref={mapRef}
-            className="w-full rounded-lg shadow-lg border border-border"
-            style={{ height: 'calc(100vh - 200px)' }}
-          />
+        <div className="space-y-2">
+          <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
+            <input
+              type="checkbox"
+              checked={layerToggles.sites}
+              onChange={() => toggleLayer('sites')}
+              className="rounded border-border"
+            />
+            <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+            </svg>
+            <span className="text-sm">Site Markers</span>
+          </label>
 
-          {/* Control Panel */}
-          <div className="absolute top-4 left-4 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-4 shadow-lg max-w-sm">
-            <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Map Layers
-            </h3>
+          <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
+            <input
+              type="checkbox"
+              checked={layerToggles.projects}
+              onChange={() => toggleLayer('projects')}
+              className="rounded border-border"
+            />
+            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" clipRule="evenodd" />
+            </svg>
+            <span className="text-sm">Project Boundaries</span>
+          </label>
 
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={layerToggles.sites}
-                  onChange={() => toggleLayer('sites')}
-                  className="rounded border-border"
-                />
-                <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                </svg>
-                <span className="text-sm">Site Markers</span>
-              </label>
+          <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
+            <input
+              type="checkbox"
+              checked={layerToggles.labels}
+              onChange={() => toggleLayer('labels')}
+              className="rounded border-border"
+            />
+            <svg className="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+            </svg>
+            <span className="text-sm">Site Labels</span>
+          </label>
 
-              <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={layerToggles.projects}
-                  onChange={() => toggleLayer('projects')}
-                  className="rounded border-border"
-                />
-                <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" clipRule="evenodd" />
-                </svg>
-                <span className="text-sm">Project Boundaries</span>
-              </label>
+          <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
+            <input
+              type="checkbox"
+              checked={layerToggles.satellite}
+              onChange={() => toggleLayer('satellite')}
+              className="rounded border-border"
+            />
+            <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z" />
+            </svg>
+            <span className="text-sm">Satellite View</span>
+          </label>
+        </div>
 
-              <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={layerToggles.labels}
-                  onChange={() => toggleLayer('labels')}
-                  className="rounded border-border"
-                />
-                <svg className="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-                <span className="text-sm">Site Labels</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 p-2 rounded">
-                <input
-                  type="checkbox"
-                  checked={layerToggles.satellite}
-                  onChange={() => toggleLayer('satellite')}
-                  className="rounded border-border"
-                />
-                <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z" />
-                </svg>
-                <span className="text-sm">Satellite View</span>
-              </label>
+        {/* Legend */}
+        <div className="mt-4 pt-3 border-t border-border">
+          <h4 className="font-medium text-foreground mb-2 text-sm">Legend</h4>
+          <div className="flex flex-wrap gap-2">
+            <div className="flex items-center gap-1 text-xs">
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+              <span>Partner A</span>
             </div>
-
-            {/* Legend */}
-            <div className="mt-4 pt-3 border-t border-border">
-              <h4 className="font-medium text-foreground mb-2 text-sm">Legend</h4>
-              <div className="flex flex-wrap gap-2">
-                <div className="flex items-center gap-1 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  <span>Active</span>
-                </div>
-                <div className="flex items-center gap-1 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                  <span>Default</span>
-                </div>
-                <div className="flex items-center gap-1 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                  <span>Planned</span>
-                </div>
-                <div className="flex items-center gap-1 text-xs">
-                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                  <span>Maintenance</span>
-                </div>
-              </div>
+            <div className="flex items-center gap-1 text-xs">
+              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <span>Default</span>
+            </div>
+            <div className="flex items-center gap-1 text-xs">
+              <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+              <span>Partner B</span>
+            </div>
+            <div className="flex items-center gap-1 text-xs">
+              <div className="w-3 h-3 rounded-full bg-red-500"></div>
+              <span>Partner C</span>
             </div>
           </div>
-
-          {/* Stats Panel */}
-          {mapStats && (
-            <div className="absolute top-4 right-4 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-4 shadow-lg">
-              <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                Statistics
-              </h3>
-
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-purple-600">{mapStats.total_projects}</div>
-                  <div className="text-muted-foreground">Projects</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-600">{mapStats.total_sites}</div>
-                  <div className="text-muted-foreground">Total Sites</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-600">{mapStats.sites_with_coords}</div>
-                  <div className="text-muted-foreground">With Coords</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-orange-600">{mapStats.sites_with_geojson}</div>
-                  <div className="text-muted-foreground">With GeoJSON</div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
-    </DashboardLayout>
+
+      {/* Stats Panel */}
+      {mapStats && (
+        <div className="absolute top-4 right-4 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-4 shadow-lg">
+          <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Statistics
+          </h3>
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{mapStats.total_projects}</div>
+              <div className="text-muted-foreground">Projects</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{mapStats.total_sites}</div>
+              <div className="text-muted-foreground">Total Sites</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{mapStats.sites_with_coords}</div>
+              <div className="text-muted-foreground">With Coords</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">{mapStats.sites_with_geojson}</div>
+              <div className="text-muted-foreground">With GeoJSON</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

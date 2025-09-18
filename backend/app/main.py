@@ -465,41 +465,88 @@ def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/api/map-data", tags=["Map"])
-def get_map_data(current_user: dict = Depends(get_current_user)):
+def get_map_data(partner: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     """Get projects and sites data for map visualization"""
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
 
-        # Get projects data
-        cursor.execute("""
+        # Base query using the join structure
+        base_query = """
             SELECT
-                p.*,
-                COUNT(DISTINCT s.id) as site_count
-            FROM Projects p
-            LEFT JOIN `Land Plots, Sites` s ON p.id = s.project_id
-            GROUP BY p.id
-        """)
-        projects = cursor.fetchall()
+                p.id AS ProjectID,
+                p.ProjectID AS Project_Code,
+                p.Primary_Project_Partner,
+                p.Project_Name,
+                lps.id AS LandPlotID,
+                lps.Plot_Name AS SiteID,
+                lps.Plot_Name AS Plot_Name,
+                lps.Country,
+                lps.Site_Address,
+                lps.Coordinates,
+                lps.landsize,
+                lps.Projects_id
+            FROM `Land Plots, Sites` lps
+            LEFT JOIN Projects p ON lps.Projects_id = p.id
+            WHERE lps.Coordinates IS NOT NULL AND lps.Coordinates != ''
+        """
 
-        # Get sites data with coordinates
-        cursor.execute("""
-            SELECT
-                s.*,
-                p.name as project_name,
-                p.status as project_status
-            FROM `Land Plots, Sites` s
-            LEFT JOIN Projects p ON s.project_id = p.id
-            WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
-        """)
+        # Add filtering if partner specified
+        if partner and partner != "all":
+            base_query += " AND p.Primary_Project_Partner = %s"
+
+        cursor.execute(base_query, (partner,) if partner and partner != "all" else ())
         sites = cursor.fetchall()
+
+        # Process coordinates and geojson data
+        for site in sites:
+            coords_value = site.get('Coordinates')  # type: ignore
+            if coords_value and isinstance(coords_value, str):
+                try:
+                    # Try to parse coordinates
+                    coords = coords_value.strip()
+                    if ',' in coords:
+                        lat_str, lng_str = coords.split(',', 1)
+                        site['latitude'] = float(lat_str.strip())  # type: ignore
+                        site['longitude'] = float(lng_str.strip())  # type: ignore
+                    else:
+                        # If not comma-separated, try to extract numbers
+                        import re
+                        numbers = re.findall(r'[-+]?\d*\.?\d+', coords)
+                        if len(numbers) >= 2:
+                            site['latitude'] = float(numbers[0])  # type: ignore
+                            site['longitude'] = float(numbers[1])  # type: ignore
+                except (ValueError, IndexError):
+                    site['latitude'] = None  # type: ignore
+                    site['longitude'] = None  # type: ignore
+            else:
+                site['latitude'] = None  # type: ignore
+                site['longitude'] = None  # type: ignore
+
+            # Process geojson data from landsize column
+            landsize_value = site.get('landsize')  # type: ignore
+            if landsize_value and isinstance(landsize_value, str):
+                try:
+                    # Check if landsize contains JSON (geojson data)
+                    if landsize_value.strip().startswith('{') and landsize_value.strip().endswith('}'):
+                        # Parse as JSON
+                        geojson_data = json.loads(landsize_value)
+                        site['geojson'] = geojson_data  # type: ignore
+                    else:
+                        site['geojson'] = None  # type: ignore
+                except (json.JSONDecodeError, ValueError):
+                    site['geojson'] = None  # type: ignore
+            else:
+                site['geojson'] = None  # type: ignore
+
+        # Filter out sites without valid coordinates
+        sites = [site for site in sites if site.get('latitude') is not None and site.get('longitude') is not None]  # type: ignore
 
         cursor.close()
         conn.close()
 
         # Convert to JSON with datetime serialization
         json_data = json.loads(json.dumps({
-            "projects": projects,
             "sites": sites
         }, default=json_serial))
 
@@ -524,12 +571,12 @@ def get_map_stats(current_user: dict = Depends(get_current_user)):
             except (ValueError, TypeError):
                 total_projects = 0
 
-        # Get site statistics
+        # Get site statistics - use Coordinates column for coords and landsize column for geojson
         cursor.execute("""
             SELECT
                 COUNT(*) as total_sites,
-                COUNT(CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN 1 END) as sites_with_coords,
-                COUNT(CASE WHEN geojson IS NOT NULL THEN 1 END) as sites_with_geojson
+                COUNT(CASE WHEN Coordinates IS NOT NULL AND Coordinates != '' THEN 1 END) as sites_with_coords,
+                COUNT(CASE WHEN landsize IS NOT NULL AND landsize != '' AND landsize LIKE '%{%' THEN 1 END) as sites_with_geojson
             FROM `Land Plots, Sites`
         """)
         site_stats = cursor.fetchone()
@@ -557,5 +604,30 @@ def get_map_stats(current_user: dict = Depends(get_current_user)):
         }
 
         return JSONResponse(content=stats)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/api/map-partners", tags=["Map"])
+def get_map_partners(current_user: dict = Depends(get_current_user)):
+    """Get distinct Primary_Project_Partner values for filtering"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT DISTINCT Primary_Project_Partner
+            FROM Projects
+            WHERE Primary_Project_Partner IS NOT NULL AND Primary_Project_Partner != ''
+            ORDER BY Primary_Project_Partner
+        """)
+        partners = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        # Extract the values
+        partner_list = [row[0] for row in partners]
+
+        return JSONResponse(content={"partners": partner_list})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
