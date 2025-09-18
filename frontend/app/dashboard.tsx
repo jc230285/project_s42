@@ -1,8 +1,9 @@
 import { getSession, signIn } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { Session } from "next-auth";
 
 export default function DashboardPage() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
