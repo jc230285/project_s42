@@ -299,7 +299,7 @@ export default function MapPage() {
 
       console.log('Fetching partners...');
       // Load partners first
-      const partnersResponse = await fetch('/api/map-partners', { headers });
+      const partnersResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/map-partners`, { headers });
       console.log('Partners response:', partnersResponse.status, partnersResponse.ok);
       if (partnersResponse.ok) {
         const partnersData: PartnersData = await partnersResponse.json();
@@ -312,8 +312,8 @@ export default function MapPage() {
       console.log('Fetching map data and stats...');
       // Load map data and stats in parallel
       const [dataResponse, statsResponse] = await Promise.all([
-        fetch(`/api/map-data?partner=${selectedPartner}`, { headers }),
-        fetch('/api/map-stats', { headers })
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/map-data?partner=${selectedPartner}`, { headers }),
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/map-stats`, { headers })
       ]);
 
       console.log('Data response:', dataResponse.status, dataResponse.ok);

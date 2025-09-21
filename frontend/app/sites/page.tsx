@@ -21,7 +21,7 @@ export default function SitesPage() {
     setIsSyncing(true);
 
     try {
-      const response = await fetch('http://localhost:8000/nocodb-sync', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb-sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

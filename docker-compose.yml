@@ -7,7 +7,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - "3100:3000"
+      - "3000:3000"
     depends_on:
       - backend
     networks:
@@ -19,7 +19,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - "8100:8000"
+      - "8000:8000"
     networks:
       - db-net
 volumes:

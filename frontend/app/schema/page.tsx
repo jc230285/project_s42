@@ -29,9 +29,13 @@ export default function SchemaPage() {
     setIsLoadingTable(true);
 
     try {
-      const response = await makeAuthenticatedRequest('http://localhost:8000/schema', {
+      const response = await makeAuthenticatedRequest(`${process.env.NEXT_PUBLIC_BACKEND_URL}/schema`, {
         method: 'GET',
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
       setSchemaTableData(data);
@@ -47,7 +51,7 @@ export default function SchemaPage() {
     setIsSyncing(true);
 
     try {
-      const response = await makeAuthenticatedRequest('http://localhost:8000/nocodb-sync', {
+      const response = await makeAuthenticatedRequest(`${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb-sync`, {
         method: 'POST',
       });
 
