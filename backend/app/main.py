@@ -1,7 +1,8 @@
-﻿from fastapi import FastAPI, Depends, HTTPException, status, Header, Query
+﻿from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from pydantic import BaseModel
 import mysql.connector
 import os
 import json
@@ -10,6 +11,10 @@ from decimal import Decimal
 from typing import Optional
 import base64
 # import nocodb_sync  # Temporarily commented out - module not found
+
+# Pydantic models for request bodies
+class NocoDBAPIUpdate(BaseModel):
+    nocodbapi: str
 
 # Create FastAPI app first with metadata
 app = FastAPI(
@@ -136,11 +141,6 @@ def _coerce_float(value):
         return None
 
 
-@app.get('/api/map-stats', tags=["map"])
-def get_map_stats_placeholder():
-    """Get map statistics - placeholder endpoint"""
-    return {"placeholder": "to be implemented"}
-
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -149,22 +149,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.get("/health", tags=["health"])
-def health():
-    """Health check endpoint to verify API is running"""
-    return {"status": "ok"}
-
-@app.get("/debug", tags=["health"])
-def debug():
-    """Debug endpoint to check environment variables and configuration"""
-    return {
-        "DB_HOST": os.getenv("DB_HOST", "NOT_SET"),
-        "DB_USER": os.getenv("DB_USER", "NOT_SET"), 
-        "DB_NAME": os.getenv("DB_NAME", "NOT_SET"),
-        "DB_PORT": os.getenv("DB_PORT", "NOT_SET"),
-        "fallback_host": "mariadb"
-    }
 
 def get_db():
     # Debug: print environment variables
@@ -182,7 +166,7 @@ def get_db():
     )
     return conn
 
-@app.get("/land-plots-sites", tags=["land-data"])
+@app.get("/land-plots-sites", tags=["Projects"])
 def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
     """Get all land plots and sites data"""
     try:
@@ -198,7 +182,38 @@ def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/hoyanger-power-data", tags=["power-data"])
+
+@app.get("/projects", tags=["projects"])
+def get_projects(current_user: dict = Depends(get_current_user)):
+    """Get all renewable energy projects"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM Projects")
+        projects = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(projects, default=json_serial))
+        return JSONResponse(content=json_data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# Map API endpoints added at the end
+@app.get('/api/map-data', tags=["projects"])
+def get_map_data_endpoint():
+    """Get map visualization data"""
+    return {"status": "Map data endpoint works"}
+
+@app.get('/api/map-stats', tags=["projects"])  
+def get_map_stats_endpoint():
+    """Get map statistics and analytics"""
+    return {"status": "Map stats endpoint works"}
+
+
+
+@app.get("/hoyanger-power-data", tags=["Hoyanger Power Data"])
 def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
     """Get Hoyanger power generation data"""
     try:
@@ -214,7 +229,9 @@ def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/users", tags=["users"])
+
+
+@app.get("/users", tags=["User Management"])
 def get_users(current_user: dict = Depends(get_current_user)):
     """Get all registered users"""
     try:
@@ -234,7 +251,7 @@ def get_users(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/groups", tags=["groups"])
+@app.get("/groups", tags=["User Management"])
 def get_groups(current_user: dict = Depends(get_current_user)):
     """Get all user groups"""
     try:
@@ -254,7 +271,7 @@ def get_groups(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.post("/users/create-or-update", tags=["authentication", "users"])
+@app.post("/users/create-or-update", tags=["User Management"])
 def create_or_update_user(current_user: dict = Depends(get_current_user)):
     """Create or update user profile based on authentication data"""
     try:
@@ -301,6 +318,65 @@ def create_or_update_user(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+@app.put("/users/{user_id}/nocodbapi", tags=["users"])
+def update_user_nocodbapi(user_id: int, request: NocoDBAPIUpdate, current_user: dict = Depends(get_current_user)):
+    """Update the NocodB API token for a specific user"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Ensure tables exist
+        create_users_table(cursor)
+        
+        # Check if user exists
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        existing_user = cursor.fetchone()
+        
+        if not existing_user:
+            cursor.close()
+            conn.close()
+            return JSONResponse(content={"error": "User not found"}, status_code=404)
+        
+        # Update nocodbapi field
+        cursor.execute(
+            "UPDATE users SET nocodbapi = %s WHERE id = %s",
+            (request.nocodbapi, user_id)
+        )
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content={"message": "NocodB API token updated successfully", "user_id": user_id})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/users/{user_id}/nocodbapi", tags=["users"])
+def get_user_nocodbapi(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Get the NocodB API token for a specific user"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Ensure tables exist
+        create_users_table(cursor)
+        
+        # Get user's nocodbapi
+        cursor.execute("SELECT id, email, name, nocodbapi FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        if not user:
+            return JSONResponse(content={"error": "User not found"}, status_code=404)
+        
+        # Convert to JSON with datetime serialization
+        json_data = json.loads(json.dumps(user, default=json_serial))
+        return JSONResponse(content=json_data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
 def create_users_table(cursor):
     """Create users table if it doesn't exist"""
     cursor.execute("""
@@ -311,9 +387,20 @@ def create_users_table(cursor):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_login TIMESTAMP,
             group_id INT,
+            nocodbapi VARCHAR(255),
             INDEX idx_email (email)
         )
     """)
+    
+    # Add nocodbapi column if it doesn't exist (for existing tables)
+    try:
+        cursor.execute("""
+            ALTER TABLE users 
+            ADD COLUMN nocodbapi VARCHAR(255)
+        """)
+    except Exception:
+        # Column already exists or other error, ignore
+        pass
 
 def create_groups_table(cursor):
     """Create groups table if it doesn't exist"""
@@ -368,30 +455,24 @@ def assign_user_to_group(cursor, user_id, email):
             (group_id, user_id)
         )
 
-@app.get("/projects", tags=["projects"])
-def get_projects(current_user: dict = Depends(get_current_user)):
-    """Get all renewable energy projects"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM Projects")
-        projects = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        # Convert to JSON with datetime serialization
-        json_data = json.loads(json.dumps(projects, default=json_serial))
-        return JSONResponse(content=json_data)
-    except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
 
+@app.get("/health", tags=["Debug"])
+def health():
+    """Health check endpoint to verify API is running"""
+    return {"status": "ok"}
 
-# Map API endpoints added at the end
-@app.get('/api/map-data', tags=["map"])
-def get_map_data_endpoint():
-    """Get map visualization data"""
-    return {"status": "Map data endpoint works"}
+@app.get("/debug", tags=["Debug"])
+def debug():
+    """Debug endpoint to check environment variables and configuration"""
+    return {
+        "DB_HOST": os.getenv("DB_HOST", "NOT_SET"),
+        "DB_USER": os.getenv("DB_USER", "NOT_SET"), 
+        "DB_NAME": os.getenv("DB_NAME", "NOT_SET"),
+        "DB_PORT": os.getenv("DB_PORT", "NOT_SET"),
+        "fallback_host": "mariadb"
+    }
 
-@app.get('/api/map-stats', tags=["map"])  
-def get_map_stats_endpoint():
-    """Get map statistics and analytics"""
-    return {"status": "Map stats endpoint works"}
+@app.get('/api/map-stats', tags=["Debug"])
+def get_map_stats_placeholder():
+    """Get map statistics - placeholder endpoint"""
+    return {"placeholder": "to be implemented"}
