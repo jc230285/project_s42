@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 import mysql.connector
+import requests
+import urllib3
 import os
 import json
 from datetime import datetime, date
@@ -11,6 +13,9 @@ from decimal import Decimal
 from typing import Optional
 import base64
 # import nocodb_sync  # Temporarily commented out - module not found
+
+# Disable SSL warnings for NocoDB API calls
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Pydantic models for request bodies
 class NocoDBAPIUpdate(BaseModel):
@@ -185,19 +190,81 @@ def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
 
 @app.get("/projects", tags=["projects"])
 def get_projects(current_user: dict = Depends(get_current_user)):
-    """Get all renewable energy projects"""
+    """Get all renewable energy projects from NocoDB API v2"""
     try:
-        conn = get_db()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM Projects")
-        projects = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        # Convert to JSON with datetime serialization
-        json_data = json.loads(json.dumps(projects, default=json_serial))
-        return JSONResponse(content=json_data)
+        # Get NocoDB configuration from environment
+        nocodb_api_url = os.getenv("NOCODB_API_URL", "https://nocodb.edbmotte.com")
+        nocodb_api_token = os.getenv("NOCODB_API_TOKEN")
+        nocodb_base_id = os.getenv("NOCODB_BASE_ID")
+        nocodb_projects_table_id = os.getenv("NOCODB_PROJECTS_TABLE_ID", "mftsk8hkw23m8q1")
+        
+        if not nocodb_api_token or not nocodb_base_id:
+            return JSONResponse(
+                content={"error": "NocoDB configuration missing"}, 
+                status_code=500
+            )
+        
+        # Construct NocoDB API v2 URL
+        api_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_projects_table_id}/records"
+        
+        # Set up headers for NocoDB API
+        headers = {
+            "xc-token": nocodb_api_token,
+            "Content-Type": "application/json"
+        }
+        
+        # Make request to NocoDB API with SSL verification disabled for now
+        response = requests.get(api_url, headers=headers, verify=False)
+        
+        if response.status_code != 200:
+            return JSONResponse(
+                content={
+                    "error": f"NocoDB API error: {response.status_code} - {response.text}",
+                    "url": api_url,
+                    "config": {
+                        "nocodb_api_url": nocodb_api_url,
+                        "nocodb_projects_table_id": nocodb_projects_table_id,
+                        "has_token": bool(nocodb_api_token),
+                        "has_base_id": bool(nocodb_base_id)
+                    }
+                }, 
+                status_code=500
+            )
+        
+        # Parse and return the data
+        data = response.json()
+        projects = data.get("list", [])
+        
+        # Show first 2 records with all fields for debugging
+        sample_projects = projects[:2] if len(projects) >= 2 else projects
+        all_fields = set()
+        
+        # Collect all field names from the sample records
+        for project in sample_projects:
+            all_fields.update(project.keys())
+        
+        return JSONResponse(content={
+            "projects": projects,
+            "count": len(projects),
+            "source": "NocoDB API v2",
+            "sample_records": sample_projects,
+            "all_fields": sorted(list(all_fields)),
+            "config": {
+                "api_url": api_url,
+                "table_id": nocodb_projects_table_id
+            }
+        })
+        
+    except requests.exceptions.RequestException as e:
+        return JSONResponse(
+            content={"error": f"Network error: {str(e)}"}, 
+            status_code=500
+        )
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"}, 
+            status_code=500
+        )
 
 
 # Map API endpoints added at the end
@@ -318,7 +385,7 @@ def create_or_update_user(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.put("/users/{user_id}/nocodbapi", tags=["users"])
+@app.put("/users/{user_id}/nocodbapi", tags=["User Management"])
 def update_user_nocodbapi(user_id: int, request: NocoDBAPIUpdate, current_user: dict = Depends(get_current_user)):
     """Update the NocodB API token for a specific user"""
     try:
@@ -351,7 +418,7 @@ def update_user_nocodbapi(user_id: int, request: NocoDBAPIUpdate, current_user: 
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/users/{user_id}/nocodbapi", tags=["users"])
+@app.get("/users/{user_id}/nocodbapi", tags=["User Management"])
 def get_user_nocodbapi(user_id: int, current_user: dict = Depends(get_current_user)):
     """Get the NocodB API token for a specific user"""
     try:
