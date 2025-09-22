@@ -678,8 +678,10 @@ def run_nocodb_sync():
         from collections import defaultdict
         grouped = defaultdict(list)
         for rec in existing_list:
-            table_normalized = rec.get("Table", "").replace(",", "").strip().lower()
-            field_id_normalized = rec.get("Field ID", "").strip().lower()
+            table_value = rec.get("Table") or ""
+            field_id_value = rec.get("Field ID") or ""
+            table_normalized = table_value.replace(",", "").strip().lower()
+            field_id_normalized = field_id_value.strip().lower()
             key = (field_id_normalized, table_normalized)
             grouped[key].append(rec)
 

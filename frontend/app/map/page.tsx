@@ -39,7 +39,7 @@ interface Site {
 
 interface MapStats {
   total_projects: number;
-  total_sites: number;
+  total_plots: number;
   sites_with_coords: number;
   sites_with_geojson: number;
 }
@@ -53,7 +53,7 @@ interface PartnersData {
 }
 
 // Custom hook for managing Google Maps outside React lifecycle
-const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean) => {
+const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean, layerToggles: any) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
@@ -78,9 +78,10 @@ const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean) => {
           mapContainerRef.current.innerHTML = '';
         }
 
-        // Calculate center from sites
+        // Calculate bounds from sites and use fitBounds
         let center: google.maps.LatLngLiteral = { lat: 67.6397, lng: 15.9792 };
         let zoom = 8;
+        let boundsToFit: google.maps.LatLngBounds | null = null;
 
         if (sites.length > 0) {
           const validSites = sites.filter(site => site.latitude && site.longitude);
@@ -90,6 +91,9 @@ const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean) => {
               bounds.extend({ lat: site.latitude, lng: site.longitude });
             });
             center = bounds.getCenter().toJSON();
+            boundsToFit = bounds;
+            // Use a higher zoom for single sites, lower for multiple
+            zoom = validSites.length === 1 ? 15 : 4;
           }
         }
 
@@ -114,38 +118,100 @@ const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean) => {
         mapInstanceRef.current = map;
         isInitializedRef.current = true;
 
+        // Fit bounds to show all sites if we have bounds
+        if (boundsToFit && sites.length > 1) {
+          map.fitBounds(boundsToFit, 50);
+        }
+
         console.log('Map created successfully');
 
-        // Add markers with safer implementation
+        // Add markers with labels and enhanced info windows
         const newMarkers: google.maps.Marker[] = [];
         sites.forEach(site => {
           if (!site.latitude || !site.longitude) return;
 
           try {
+            // Create the main marker
             const marker = new window.google.maps.Marker({
               position: { lat: site.latitude, lng: site.longitude },
               map,
-              title: site.name,
+              title: site.Plot_Name || site.name || 'Site',
               icon: {
                 path: window.google.maps.SymbolPath.CIRCLE,
-                scale: 10,
+                scale: 8,
                 fillColor: '#3b82f6',
                 fillOpacity: 1,
                 strokeColor: '#ffffff',
-                strokeWeight: 3,
+                strokeWeight: 2,
               },
             });
 
-            // Add click listener with error handling
+            // Create a label marker for the Plot_Name positioned above the main marker (only if labels are enabled)
+            let labelMarker = null;
+            if (layerToggles?.labels) {
+              labelMarker = new window.google.maps.Marker({
+                position: { lat: site.latitude + 0.001, lng: site.longitude }, // Offset slightly north
+                map,
+                icon: {
+                  path: 'M 0,0 z',
+                  fillOpacity: 0,
+                  strokeOpacity: 0,
+                  scale: 0
+                },
+                label: {
+                  text: site.Plot_Name ? (site.Plot_Name.length > 25 ? site.Plot_Name.substring(0, 22) + '...' : site.Plot_Name) : (site.name || 'Site'),
+                  color: '#1f2937',
+                  fontSize: '11px',
+                  fontWeight: 'bold'
+                },
+                clickable: false
+              });
+            }
+
+            // Enhanced click listener with comprehensive data
             try {
               marker.addListener('click', () => {
                 try {
                   const infoWindow = new window.google.maps.InfoWindow({
                     content: `
-                      <div style="min-width:300px;">
-                        <h3>${site.Plot_Name || site.name || 'Site'}</h3>
-                        <p>Coordinates: ${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}</p>
-                        ${site.Project_Name ? `<p>Project: ${site.Project_Name}</p>` : ''}
+                      <div style="min-width: 350px; max-width: 400px; font-family: Arial, sans-serif;">
+                        <div style="border-bottom: 2px solid #3b82f6; padding-bottom: 8px; margin-bottom: 12px;">
+                          <h3 style="margin: 0; color: #1f2937; font-size: 16px;">${site.Plot_Name || site.name || 'Site'}</h3>
+                          <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 12px;">${site.Project_Code || 'N/A'}</p>
+                        </div>
+                        
+                        <div style="margin-bottom: 12px;">
+                          <strong style="color: #374151;">Project:</strong> ${site.Project_Name || 'N/A'}<br>
+                          <strong style="color: #374151;">Partner:</strong> ${site.Primary_Project_Partner || 'N/A'}<br>
+                          <strong style="color: #374151;">Country:</strong> ${site.Country || 'N/A'}
+                        </div>
+                        
+                        <div style="margin-bottom: 12px;">
+                          <strong style="color: #374151;">Address:</strong><br>
+                          <span style="color: #6b7280; font-size: 13px;">${site.Site_Address || 'Address not specified'}</span>
+                        </div>
+                        
+                        <div style="background-color: #f9fafb; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                          <strong style="color: #374151;">Coordinates:</strong><br>
+                          <span style="font-family: monospace; font-size: 12px; color: #6b7280;">
+                            ${site.latitude.toFixed(6)}, ${site.longitude.toFixed(6)}
+                          </span>
+                        </div>
+                        
+                        ${site.geojson ? `
+                          <div style="margin: 12px 0; padding: 8px; background-color: #ecfdf5; border-radius: 4px; border-left: 3px solid #10b981;">
+                            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                              <span style="color: #047857; font-size: 12px; font-weight: 600;">📍 Polygon Area Available</span>
+                            </div>
+                            <div style="color: #065f46; font-size: 11px;">
+                              Polygon boundary data available for this site
+                            </div>
+                          </div>
+                        ` : ''}
+                        
+                        <div style="margin-top: 12px; text-align: right;">
+                          <small style="color: #9ca3af;">Site ID: ${site.LandPlotID || 'N/A'}</small>
+                        </div>
                       </div>
                     `,
                   });
@@ -159,6 +225,9 @@ const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean) => {
             }
 
             newMarkers.push(marker);
+            if (labelMarker) {
+              newMarkers.push(labelMarker);
+            }
           } catch (markerError) {
             console.error('Error creating marker for site:', site.name, markerError);
           }
@@ -204,9 +273,20 @@ const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean) => {
         isInitializedRef.current = false;
       }
     };
-  }, [sites, googleMapsLoaded]);
+  }, [sites, googleMapsLoaded, layerToggles]);
 
-  return mapContainerRef;
+  return { mapContainerRef, fitAllSites: () => {
+    if (mapInstanceRef.current && sites.length > 0) {
+      const validSites = sites.filter(site => site.latitude && site.longitude);
+      if (validSites.length > 0) {
+        const bounds = new window.google.maps.LatLngBounds();
+        validSites.forEach(site => {
+          bounds.extend({ lat: site.latitude, lng: site.longitude });
+        });
+        mapInstanceRef.current.fitBounds(bounds, 50);
+      }
+    }
+  } };
 };
 
 export default function MapPage() {
@@ -228,7 +308,7 @@ export default function MapPage() {
   const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
 
   // Use the isolated Google Maps hook
-  const mapContainerRef = useGoogleMaps(mapData?.sites || [], googleMapsLoaded);
+  const { mapContainerRef, fitAllSites } = useGoogleMaps(mapData?.sites || [], googleMapsLoaded, layerToggles);
 
   useEffect(() => {
     console.log('Session status:', status);
@@ -299,7 +379,7 @@ export default function MapPage() {
 
       console.log('Fetching partners...');
       // Load partners first
-      const partnersResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/map-partners`, { headers });
+      const partnersResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/projects-partners`, { headers });
       console.log('Partners response:', partnersResponse.status, partnersResponse.ok);
       if (partnersResponse.ok) {
         const partnersData: PartnersData = await partnersResponse.json();
@@ -379,25 +459,35 @@ export default function MapPage() {
   }
 
   return (
-    <div className="h-screen w-screen relative overflow-hidden">
-      {/* Google Maps Container - Isolated from React */}
-      <div
-        ref={mapContainerRef}
-        className="w-full h-full"
-        style={{
-          backgroundColor: '#f0f0f0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        {!googleMapsLoaded && (
-          <div className="text-center text-gray-600">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <div>Loading Map...</div>
-          </div>
-        )}
-      </div>
+    <DashboardLayout initialSidebarCollapsed={true}>
+      <style jsx global>{`
+        .map-label {
+          background-color: rgba(255, 255, 255, 0.9) !important;
+          border: 1px solid #d1d5db !important;
+          border-radius: 4px !important;
+          padding: 2px 6px !important;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+        }
+      `}</style>
+      <div className="h-screen w-full relative overflow-hidden">
+        {/* Google Maps Container - Isolated from React */}
+        <div
+          ref={mapContainerRef}
+          className="w-full h-full"
+          style={{
+            backgroundColor: '#f0f0f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          {!googleMapsLoaded && (
+            <div className="text-center text-gray-600">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <div>Loading Map...</div>
+            </div>
+          )}
+        </div>
 
       {/* Loading overlay */}
       {loading && (
@@ -447,6 +537,16 @@ export default function MapPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Map Control Buttons */}
+        <div className="mb-4">
+          <button
+            onClick={fitAllSites}
+            className="w-full px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
+          >
+            📍 Fit All Sites
+          </button>
         </div>
 
         <div className="space-y-2">
@@ -543,7 +643,7 @@ export default function MapPage() {
               <div className="text-muted-foreground">Projects</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{mapStats.total_sites}</div>
+              <div className="text-2xl font-bold text-blue-600">{mapStats.total_plots}</div>
               <div className="text-muted-foreground">Total Sites</div>
             </div>
             <div className="text-center">
@@ -557,6 +657,7 @@ export default function MapPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }
