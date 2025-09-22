@@ -177,6 +177,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
         { href: 'https://n8n.edbmotte.com/projects/A35bALSD6kzKLUi6/workflows', icon: Workflow, label: 'n8n' },
         { href: 'https://nocodb.edbmotte.com/dashboard/#/nc/pjqgy4ri85jks06/mmqclkrvx9lbtpc', icon: Database, label: 'nocodb' },
         { href: 'https://drive.google.com/drive/recent', icon: HardDrive, label: 'drive' },
+        { href: 'https://www.notion.so', icon: HardDrive, label: 'notion' },
       ]
     },
     {

@@ -66,7 +66,7 @@ export default function SchemaPage() {
   const updateNocoDBField = async (recordId: string, fieldId: string, value: any) => {
     try {
       const updateData = {
-        table_id: process.env.NEXT_PUBLIC_NOCODB_PROJECTS_TABLE_ID || 'mftsk8hkw23m8q1',
+        table_id: 'm72851bbm1z0qul', // Schema table ID - the only table we're updating on this page
         row_id: recordId,
         field_data: {
           [fieldId]: value
