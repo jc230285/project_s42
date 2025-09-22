@@ -7,12 +7,22 @@ import toast from 'react-hot-toast'
 import DashboardLayout from '@/components/DashboardLayout'
 import { Button } from '@/components/ui/button'
 
+interface EditingField {
+  recordId: string
+  fieldName: string
+  value: string
+}
+
 export default function SchemaPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [schemaTableData, setSchemaTableData] = useState<any>(null)
   const [isLoadingTable, setIsLoadingTable] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [editingField, setEditingField] = useState<EditingField | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [showDescriptionModal, setShowDescriptionModal] = useState(false)
+  const [selectedRecord, setSelectedRecord] = useState<any>(null)
 
   useEffect(() => {
     if (status !== "loading" && !session) {
@@ -50,6 +60,104 @@ export default function SchemaPage() {
         'Content-Type': 'application/json',
       },
     });
+  };
+
+  // Function to update NocoDB field
+  const updateNocoDBField = async (recordId: string, fieldId: string, value: any) => {
+    try {
+      const updateData = {
+        table_id: process.env.NEXT_PUBLIC_NOCODB_PROJECTS_TABLE_ID || 'mftsk8hkw23m8q1',
+        row_id: recordId,
+        field_data: {
+          [fieldId]: value
+        }
+      };
+
+      const response = await makeAuthenticatedRequest(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/update-row`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(updateData)
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success('Field updated successfully!');
+        // Refresh the table data
+        await handleGetSchemaTable();
+        return true;
+      } else {
+        throw new Error(result.message || 'Update failed');
+      }
+    } catch (error) {
+      console.error('Error updating field:', error);
+      toast.error(`Failed to update field: ${error}`);
+      return false;
+    }
+  };
+
+  // Handle field editing
+  const handleFieldEdit = (recordId: string, fieldName: string, currentValue: string) => {
+    setEditingField({ recordId, fieldName, value: currentValue });
+    setEditValue(currentValue);
+  };
+
+  // Handle save edit
+  const handleSaveEdit = async () => {
+    if (!editingField) return;
+
+    const fieldIdMapping: { [key: string]: string } = {
+      'Description': 'cqafayslz10gqib',
+      'Field Order': 'ckh6xzj3uvl09i5', 
+      'Category': 'c3xywkmub993x24',
+      'Subcategory': 'ceznmyuazlgngiw'
+    };
+
+    const fieldId = fieldIdMapping[editingField.fieldName];
+    if (!fieldId) {
+      toast.error('Unknown field type');
+      return;
+    }
+
+    // Convert to number for Field Order
+    const value = editingField.fieldName === 'Field Order' ? parseInt(editValue) || 0 : editValue;
+
+    const success = await updateNocoDBField(editingField.recordId, fieldId, value);
+    if (success) {
+      setEditingField(null);
+      setEditValue('');
+    }
+  };
+
+  // Handle cancel edit
+  const handleCancelEdit = () => {
+    setEditingField(null);
+    setEditValue('');
+  };
+
+  // Handle description modal
+  const handleDescriptionEdit = (record: any) => {
+    setSelectedRecord(record);
+    setEditValue(record.Description || '');
+    setShowDescriptionModal(true);
+  };
+
+  // Handle save description
+  const handleSaveDescription = async () => {
+    if (!selectedRecord) return;
+
+    const success = await updateNocoDBField(selectedRecord.id, 'cqafayslz10gqib', editValue);
+    if (success) {
+      setShowDescriptionModal(false);
+      setSelectedRecord(null);
+      setEditValue('');
+    }
   };
 
   const handleGetSchemaTable = async () => {
@@ -221,7 +329,97 @@ export default function SchemaPage() {
                               
                               return sortedKeys.map((key) => (
                                 <td key={key} className="px-4 py-3 text-sm text-foreground">
-                                  {key === 'Options' && record[key] ? (
+                                  {key === 'Description' ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="truncate max-w-xs" title={record[key] || ''}>
+                                        {record[key] || 'Click to edit'}
+                                      </span>
+                                      <button
+                                        onClick={() => handleDescriptionEdit(record)}
+                                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 rounded border border-blue-200 hover:border-blue-400 transition-colors"
+                                      >
+                                        Edit
+                                      </button>
+                                    </div>
+                                  ) : key === 'Field Order' ? (
+                                    editingField?.recordId === record.id && editingField?.fieldName === key ? (
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="number"
+                                          value={editValue}
+                                          onChange={(e) => setEditValue(e.target.value)}
+                                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                                          autoFocus
+                                        />
+                                        <button
+                                          onClick={handleSaveEdit}
+                                          className="text-green-600 hover:text-green-800 text-xs px-2 py-1 rounded border border-green-200 hover:border-green-400"
+                                        >
+                                          ✓
+                                        </button>
+                                        <button
+                                          onClick={handleCancelEdit}
+                                          className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded border border-red-200 hover:border-red-400"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div
+                                        onClick={() => handleFieldEdit(record.id, key, String(record[key] || ''))}
+                                        className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded"
+                                      >
+                                        {record[key] || 'Click to edit'}
+                                      </div>
+                                    )
+                                  ) : key === 'Category' || key === 'Subcategory' ? (
+                                    editingField?.recordId === record.id && editingField?.fieldName === key ? (
+                                      <div className="flex items-center gap-2">
+                                        <select
+                                          value={editValue}
+                                          onChange={(e) => setEditValue(e.target.value)}
+                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
+                                          autoFocus
+                                        >
+                                          <option value="">Select {key}</option>
+                                          {key === 'Category' ? (
+                                            <>
+                                              <option value="Financial">Financial</option>
+                                              <option value="Technical">Technical</option>
+                                              <option value="Environmental">Environmental</option>
+                                              <option value="Social">Social</option>
+                                              <option value="Legal">Legal</option>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <option value="Primary">Primary</option>
+                                              <option value="Secondary">Secondary</option>
+                                              <option value="Optional">Optional</option>
+                                            </>
+                                          )}
+                                        </select>
+                                        <button
+                                          onClick={handleSaveEdit}
+                                          className="text-green-600 hover:text-green-800 text-xs px-2 py-1 rounded border border-green-200 hover:border-green-400"
+                                        >
+                                          ✓
+                                        </button>
+                                        <button
+                                          onClick={handleCancelEdit}
+                                          className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded border border-red-200 hover:border-red-400"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div
+                                        onClick={() => handleFieldEdit(record.id, key, String(record[key] || ''))}
+                                        className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded"
+                                      >
+                                        {record[key] || 'Click to select'}
+                                      </div>
+                                    )
+                                  ) : key === 'Options' && record[key] ? (
                                     // Special formatting for Options field - make it more readable
                                     <div className="max-w-xs">
                                       <div className="text-xs text-muted-foreground mb-1">Options:</div>
@@ -354,6 +552,46 @@ export default function SchemaPage() {
           </div>
         )}
       </div>
+
+      {/* Description Edit Modal */}
+      {showDescriptionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-full">
+            <h3 className="text-lg font-semibold mb-4">Edit Description</h3>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">
+                Field: {selectedRecord?.['Field Name'] || 'Unknown'}
+              </label>
+              <textarea
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter description..."
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowDescriptionModal(false);
+                  setSelectedRecord(null);
+                  setEditValue('');
+                }}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveDescription}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

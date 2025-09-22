@@ -174,9 +174,9 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
     {
       title: 'Tools',
       items: [
-        { href: '/tools/n8n', icon: Workflow, label: 'n8n' },
-        { href: '/tools/nocodb', icon: Database, label: 'nocodb' },
-        { href: '/tools/drive', icon: HardDrive, label: 'drive' },
+        { href: 'https://n8n.edbmotte.com/projects/A35bALSD6kzKLUi6/workflows', icon: Workflow, label: 'n8n' },
+        { href: 'https://nocodb.edbmotte.com/dashboard/#/nc/pjqgy4ri85jks06/mmqclkrvx9lbtpc', icon: Database, label: 'nocodb' },
+        { href: 'https://drive.google.com/drive/recent', icon: HardDrive, label: 'drive' },
       ]
     },
     {
