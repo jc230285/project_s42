@@ -70,7 +70,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000"],
+    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000", "http://localhost:3150"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
