@@ -11,8 +11,46 @@ from typing import Optional
 import base64
 # import nocodb_sync  # Temporarily commented out - module not found
 
-# Create FastAPI app first
-app = FastAPI()
+# Create FastAPI app first with metadata
+app = FastAPI(
+    title="S42 Project API",
+    description="API for renewable energy project management and monitoring",
+    version="1.0.0",
+    tags_metadata=[
+        {
+            "name": "health",
+            "description": "Health check and system status endpoints"
+        },
+        {
+            "name": "authentication",
+            "description": "User authentication and session management"
+        },
+        {
+            "name": "projects",
+            "description": "Project management and data retrieval"
+        },
+        {
+            "name": "land-data",
+            "description": "Land plots and site information"
+        },
+        {
+            "name": "power-data",
+            "description": "Power generation and monitoring data"
+        },
+        {
+            "name": "users",
+            "description": "User management and access control"
+        },
+        {
+            "name": "groups",
+            "description": "Group management and permissions"
+        },
+        {
+            "name": "map",
+            "description": "Map visualization and geographic data"
+        }
+    ]
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -98,11 +136,10 @@ def _coerce_float(value):
         return None
 
 
-@app.get('/api/map-stats')
+@app.get('/api/map-stats', tags=["map"])
 def get_map_stats_placeholder():
+    """Get map statistics - placeholder endpoint"""
     return {"placeholder": "to be implemented"}
-
-app = FastAPI()
 
 # Add CORS middleware
 app.add_middleware(
@@ -113,12 +150,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health")
+@app.get("/health", tags=["health"])
 def health():
+    """Health check endpoint to verify API is running"""
     return {"status": "ok"}
 
-@app.get("/debug")
+@app.get("/debug", tags=["health"])
 def debug():
+    """Debug endpoint to check environment variables and configuration"""
     return {
         "DB_HOST": os.getenv("DB_HOST", "NOT_SET"),
         "DB_USER": os.getenv("DB_USER", "NOT_SET"), 
@@ -143,8 +182,9 @@ def get_db():
     )
     return conn
 
-@app.get("/land-plots-sites")
+@app.get("/land-plots-sites", tags=["land-data"])
 def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
+    """Get all land plots and sites data"""
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -158,8 +198,9 @@ def get_land_plots_sites(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/hoyanger-power-data")
+@app.get("/hoyanger-power-data", tags=["power-data"])
 def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
+    """Get Hoyanger power generation data"""
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -173,8 +214,9 @@ def get_hoyanger_power_data(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/users")
+@app.get("/users", tags=["users"])
 def get_users(current_user: dict = Depends(get_current_user)):
+    """Get all registered users"""
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -192,8 +234,9 @@ def get_users(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.get("/groups")
+@app.get("/groups", tags=["groups"])
 def get_groups(current_user: dict = Depends(get_current_user)):
+    """Get all user groups"""
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -211,8 +254,9 @@ def get_groups(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.post("/users/create-or-update")
+@app.post("/users/create-or-update", tags=["authentication", "users"])
 def create_or_update_user(current_user: dict = Depends(get_current_user)):
+    """Create or update user profile based on authentication data"""
     try:
         user_email = current_user.get("email")
         user_name = current_user.get("name", "")
@@ -324,8 +368,9 @@ def assign_user_to_group(cursor, user_id, email):
             (group_id, user_id)
         )
 
-@app.get("/projects")
+@app.get("/projects", tags=["projects"])
 def get_projects(current_user: dict = Depends(get_current_user)):
+    """Get all renewable energy projects"""
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
@@ -341,10 +386,12 @@ def get_projects(current_user: dict = Depends(get_current_user)):
 
 
 # Map API endpoints added at the end
-@app.get('/api/map-data')
+@app.get('/api/map-data', tags=["map"])
 def get_map_data_endpoint():
+    """Get map visualization data"""
     return {"status": "Map data endpoint works"}
 
-@app.get('/api/map-stats')  
+@app.get('/api/map-stats', tags=["map"])  
 def get_map_stats_endpoint():
+    """Get map statistics and analytics"""
     return {"status": "Map stats endpoint works"}
