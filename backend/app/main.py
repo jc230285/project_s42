@@ -70,11 +70,24 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000", "http://localhost:3150"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=False,  # Must be False when using "*" origins
+    allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add manual CORS handler for troubleshooting
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return {"message": "OK"}
+
+@app.middleware("http")
+async def cors_handler(request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 # Custom JSON encoder for datetime and decimal objects
 def json_serial(obj):
