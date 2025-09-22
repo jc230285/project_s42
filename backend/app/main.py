@@ -10,7 +10,7 @@ import os
 import json
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Any
 import base64
 from . import nocodb_sync
 
@@ -20,6 +20,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Pydantic models for request bodies
 class NocoDBAPIUpdate(BaseModel):
     nocodbapi: str
+
+class NocoDBRowUpdate(BaseModel):
+    table_id: str
+    row_id: str
+    field_data: dict[str, Any]
 
 # Create FastAPI app first with metadata
 app = FastAPI(
@@ -1054,6 +1059,111 @@ def debug():
         "DB_PORT": os.getenv("DB_PORT", "NOT_SET"),
         "fallback_host": "mariadb"
     }
+
+@app.put("/nocodb/update-row", tags=["nocodb"])
+async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = Depends(get_current_user)):
+    """Update a row in NocoDB table"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        if current_user and current_user.get("authenticated"):
+            user_email = current_user.get("email")
+            if user_email:
+                try:
+                    conn = mysql.connector.connect(
+                        host=os.getenv("DB_HOST"),
+                        user=os.getenv("DB_USER"),
+                        password=os.getenv("DB_PASSWORD"),
+                        database=os.getenv("DB_NAME"),
+                        port=int(os.getenv("DB_PORT", 3306))
+                    )
+                    cursor = conn.cursor(dictionary=True)
+                    cursor.execute("SELECT nocodbapi FROM accounts WHERE email = %s", (user_email,))
+                    user_data = cursor.fetchone()
+                    if user_data and user_data.get('nocodbapi'):
+                        user_token = user_data['nocodbapi']
+                    cursor.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        if not api_token:
+            raise HTTPException(status_code=500, detail="No API token available")
+        
+        # NocoDB API endpoint
+        base_id = os.getenv("NOCODB_BASE_ID")
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v2/tables/{update_data.table_id}/records/{update_data.row_id}"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token
+        }
+        
+        # Make the update request
+        response = requests.patch(nocodb_url, json=update_data.field_data, headers=headers, verify=False)
+        
+        if response.status_code == 200:
+            return {"success": True, "data": response.json()}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"NocoDB API error: {response.text}")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/nocodb/table/{table_id}", tags=["nocodb"])
+async def get_nocodb_table_info(table_id: str, current_user: dict = Depends(get_current_user)):
+    """Get table information from NocoDB"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        if current_user and current_user.get("authenticated"):
+            user_email = current_user.get("email")
+            if user_email:
+                try:
+                    conn = mysql.connector.connect(
+                        host=os.getenv("DB_HOST"),
+                        user=os.getenv("DB_USER"),
+                        password=os.getenv("DB_PASSWORD"),
+                        database=os.getenv("DB_NAME"),
+                        port=int(os.getenv("DB_PORT", 3306))
+                    )
+                    cursor = conn.cursor(dictionary=True)
+                    cursor.execute("SELECT nocodbapi FROM accounts WHERE email = %s", (user_email,))
+                    user_data = cursor.fetchone()
+                    if user_data and user_data.get('nocodbapi'):
+                        user_token = user_data['nocodbapi']
+                    cursor.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        if not api_token:
+            raise HTTPException(status_code=500, detail="No API token available")
+        
+        # NocoDB API endpoint for table info
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v2/tables/{table_id}"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token
+        }
+        
+        # Make the request
+        response = requests.get(nocodb_url, headers=headers, verify=False)
+        
+        if response.status_code == 200:
+            return {"success": True, "data": response.json()}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"NocoDB API error: {response.text}")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get('/api/map-stats', tags=["Debug"])
 def get_map_stats_placeholder():
