@@ -594,7 +594,7 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
             elif field_name == "Subcategory" and field_type == "SingleSelect":
                 subcategory_options = parse_select_options(options_raw)
             
-            # Map the NocoDB fields to frontend expected format
+            # Map the NocoDB fields to frontend expected format - including category_order and subcategory_order
             processed_record = {
                 "id": record.get("id"),
                 "Field Name": record.get("Field Name", ""),
@@ -602,6 +602,8 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
                 "Field Order": record.get("Field Order", 999),
                 "Category": record.get("Category", ""),
                 "Subcategory": record.get("Subcategory", ""),
+                "category_order": record.get("category_order", 999),
+                "subcategory_order": record.get("subcategory_order", 999),
                 "Type": record.get("Type", ""),
                 "Field ID": record.get("Field ID", ""),
                 "Table": record.get("Table", ""),
@@ -612,7 +614,7 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
             }
             processed_records.append(processed_record)
         
-        # Sort the records by Category, Subcategory, then Field Order
+        # Sort the records by category_order, subcategory_order, then Field Order (all numeric, lower numbers first)
         # This will organize the data properly for the frontend
         def get_sort_key(record):
             # Helper function for safe integer conversion
@@ -622,11 +624,12 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
                 except (ValueError, TypeError):
                     return default
             
-            category = str(record.get("Category", "")).lower()
-            subcategory = str(record.get("Subcategory", "")).lower()
+            # Use numeric ordering fields for proper sorting
+            category_order = safe_int(record.get("category_order", 999))
+            subcategory_order = safe_int(record.get("subcategory_order", 999))
             field_order = safe_int(record.get("Field Order", 999))
             
-            return (category, subcategory, field_order)
+            return (category_order, subcategory_order, field_order)
         
         # Sort the processed records
         sorted_records = sorted(processed_records, key=get_sort_key)
@@ -649,7 +652,7 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
                     "requested_limit": params.get("limit"),
                     "response_keys": list(data.keys()),
                     "sorting_applied": True,
-                    "sort_order": "Category -> Subcategory -> Field Order (Alphabetical)",
+                    "sort_order": "category_order -> subcategory_order -> Field Order (Numeric, lower numbers first)",
                     "processing": "NocoDB v2 format with direct field mapping and parsed dropdown options",
                     "categories_found": list(set(r.get("Category", "") for r in processed_records)),
                     "subcategories_found": list(set(r.get("Subcategory", "") for r in processed_records))
@@ -1189,22 +1192,28 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
         if not api_token:
             raise HTTPException(status_code=500, detail="No API token available")
         
-        # NocoDB API endpoint
+        # NocoDB v2 API endpoint - note: no record ID in URL for bulk updates
         base_id = os.getenv("NOCODB_BASE_ID")
-        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v2/tables/{update_data.table_id}/records/{update_data.row_id}"
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v2/tables/{update_data.table_id}/records"
         
         headers = {
             "Content-Type": "application/json",
             "xc-token": api_token
         }
         
+        # NocoDB v2 expects an array of records with the primary key field for updates
+        update_payload = [{
+            "id": int(update_data.row_id),  # Convert to integer as NocoDB expects numeric IDs
+            **update_data.field_data
+        }]
+        
         # Make the update request
-        print(f"🔄 Making NocoDB update request:")
+        print(f"🔄 Making NocoDB v2 update request:")
         print(f"   URL: {nocodb_url}")
-        print(f"   Data: {update_data.field_data}")
+        print(f"   Payload: {update_payload}")
         print(f"   Token type: {'user' if user_token else 'admin'}")
         
-        response = requests.patch(nocodb_url, json=update_data.field_data, headers=headers, verify=False)
+        response = requests.patch(nocodb_url, json=update_payload, headers=headers, verify=False)
         
         print(f"📡 NocoDB Response: {response.status_code}")
         if response.status_code != 200:

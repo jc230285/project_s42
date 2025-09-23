@@ -38,6 +38,18 @@ export default function SchemaPage() {
     }
   }, [session]);
 
+  // Helper function to map field IDs to field names
+  const getFieldNameFromId = (fieldId: string) => {
+    const fieldMap: { [key: string]: string } = {
+      'cqafayslz10gqib': 'Description',
+      'ckh6xzj3uvl09i5': 'Field Order',
+      'c3xywkmub993x24': 'Category',
+      'ceznmyuazlgngiw': 'Subcategory',
+      // Add more field mappings as needed
+    };
+    return fieldMap[fieldId] || 'unknown_field';
+  };
+
   // Helper function to make authenticated requests
   const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
     if (!session?.user?.email) {
@@ -68,7 +80,7 @@ export default function SchemaPage() {
     try {
       const updateData = {
         table_id: 'm72851bbm1z0qul', // Schema table ID - the only table we're updating on this page
-        row_id: recordId,
+        row_id: String(recordId), // Ensure row_id is always a string
         field_data: {
           [fieldId]: value
         }
@@ -88,12 +100,37 @@ export default function SchemaPage() {
 
       const result = await response.json();
       
+      console.log('🔍 Update API Response:', {
+        success: result.success,
+        data: result.data,
+        recordId,
+        fieldId,
+        fieldName: getFieldNameFromId(fieldId),
+        value,
+        fullResult: result
+      });
+      
       if (result.success) {
-        toast.success('Field updated successfully!');
-        // Refresh the table data
-        await handleGetSchemaTable();
+        toast.success(`${getFieldNameFromId(fieldId)} updated successfully!`);
+        
+        // Update local state immediately for real-time feedback
+        setSchemaTableData((prevData: any[]) => 
+          prevData.map((record: any) => 
+            String(record.id) === String(recordId) 
+              ? { ...record, [getFieldNameFromId(fieldId)]: value }
+              : record
+          )
+        );
+        
+        // Refresh data from server to ensure consistency after a short delay
+        setTimeout(() => {
+          console.log('🔄 Refreshing data after successful update');
+          handleGetSchemaTable();
+        }, 500);
+        
         return true;
       } else {
+        console.error('❌ Update failed:', result);
         throw new Error(result.message || 'Update failed');
       }
     } catch (error) {
@@ -113,6 +150,12 @@ export default function SchemaPage() {
   const handleSaveEdit = async () => {
     if (!editingField) return;
 
+    console.log('💾 Starting save edit:', {
+      editingField,
+      editValue,
+      currentTime: new Date().toISOString()
+    });
+
     const fieldIdMapping: { [key: string]: string } = {
       'Description': 'cqafayslz10gqib',
       'Field Order': 'ckh6xzj3uvl09i5', 
@@ -122,17 +165,30 @@ export default function SchemaPage() {
 
     const fieldId = fieldIdMapping[editingField.fieldName];
     if (!fieldId) {
+      console.error('❌ Unknown field type:', editingField.fieldName);
       toast.error('Unknown field type');
       return;
     }
 
+    console.log('🔧 Field mapping:', {
+      fieldName: editingField.fieldName,
+      fieldId,
+      editValue,
+      recordId: editingField.recordId
+    });
+
     // Convert to number for Field Order
     const value = editingField.fieldName === 'Field Order' ? parseInt(editValue) || 0 : editValue;
+
+    console.log('📤 Sending update request with value:', value);
 
     const success = await updateNocoDBField(editingField.recordId, fieldId, value);
     if (success) {
       setEditingField(null);
       setEditValue('');
+      console.log('✅ Edit completed successfully');
+    } else {
+      console.log('❌ Edit failed');
     }
   };
 
@@ -155,6 +211,15 @@ export default function SchemaPage() {
 
     const success = await updateNocoDBField(selectedRecord.id, 'cqafayslz10gqib', editValue);
     if (success) {
+      // Update local state immediately
+      setSchemaTableData((prevData: any[]) => 
+        prevData.map((record: any) => 
+          record.id === selectedRecord.id 
+            ? { ...record, Description: editValue }
+            : record
+        )
+      );
+      
       setShowDescriptionModal(false);
       setSelectedRecord(null);
       setEditValue('');
@@ -343,83 +408,98 @@ export default function SchemaPage() {
                                       </span>
                                       <button
                                         onClick={() => handleDescriptionEdit(record)}
-                                        className="text-blue-600 hover:text-blue-800 text-xs px-2 py-1 rounded border border-blue-200 hover:border-blue-400 transition-colors"
+                                        className="text-primary hover:text-primary/80 text-xs px-2 py-1 rounded border border-border hover:border-primary/50 transition-colors bg-muted/50 hover:bg-muted"
                                       >
                                         Edit
                                       </button>
                                     </div>
                                   ) : key === 'Field Order' ? (
                                     editingField?.recordId === record.id && editingField?.fieldName === key ? (
-                                      <div className="flex items-center gap-2">
-                                        <input
-                                          type="number"
-                                          value={editValue}
-                                          onChange={(e) => setEditValue(e.target.value)}
-                                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
-                                          autoFocus
-                                        />
-                                        <button
-                                          onClick={handleSaveEdit}
-                                          className="text-green-600 hover:text-green-800 text-xs px-2 py-1 rounded border border-green-200 hover:border-green-400"
-                                        >
-                                          ✓
-                                        </button>
-                                        <button
-                                          onClick={handleCancelEdit}
-                                          className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded border border-red-200 hover:border-red-400"
-                                        >
-                                          ✕
-                                        </button>
-                                      </div>
+                                      <input
+                                        type="number"
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        onBlur={handleSaveEdit}
+                                        onKeyPress={(e) => {
+                                          if (e.key === 'Enter') {
+                                            handleSaveEdit();
+                                          } else if (e.key === 'Escape') {
+                                            handleCancelEdit();
+                                          }
+                                        }}
+                                        className="w-16 px-2 py-1 border border-border rounded text-sm bg-background text-foreground focus:ring-2 focus:ring-ring"
+                                        autoFocus
+                                      />
                                     ) : (
                                       <div
                                         onClick={() => handleFieldEdit(record.id, key, String(record[key] || ''))}
-                                        className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded"
+                                        className="cursor-pointer hover:bg-muted/50 px-2 py-1 rounded transition-colors"
                                       >
                                         {record[key] || 'Click to edit'}
                                       </div>
                                     )
                                   ) : key === 'Category' || key === 'Subcategory' ? (
                                     editingField?.recordId === record.id && editingField?.fieldName === key ? (
-                                      <div className="flex items-center gap-2">
-                                        <select
-                                          value={editValue}
-                                          onChange={(e) => setEditValue(e.target.value)}
-                                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                                          autoFocus
-                                        >
-                                          <option value="">Select {key}</option>
-                                          {key === 'Category' ? (
-                                            fieldOptions.Category?.map((option: any) => (
-                                              <option key={option.value} value={option.value}>
-                                                {option.label}
-                                              </option>
-                                            ))
-                                          ) : (
-                                            fieldOptions.Subcategory?.map((option: any) => (
-                                              <option key={option.value} value={option.value}>
-                                                {option.label}
-                                              </option>
-                                            ))
-                                          )}
-                                        </select>
-                                        <button
-                                          onClick={handleSaveEdit}
-                                          className="text-green-600 hover:text-green-800 text-xs px-2 py-1 rounded border border-green-200 hover:border-green-400"
-                                        >
-                                          ✓
-                                        </button>
-                                        <button
-                                          onClick={handleCancelEdit}
-                                          className="text-red-600 hover:text-red-800 text-xs px-2 py-1 rounded border border-red-200 hover:border-red-400"
-                                        >
-                                          ✕
-                                        </button>
-                                      </div>
+                                      <select
+                                        value={editValue}
+                                        onChange={(e) => {
+                                          console.log('🔽 Dropdown changed:', {
+                                            field: key,
+                                            recordId: record.id,
+                                            oldValue: editValue,
+                                            newValue: e.target.value,
+                                            timestamp: new Date().toISOString()
+                                          });
+                                          
+                                          const newValue = e.target.value;
+                                          setEditValue(newValue);
+                                          // Auto-save immediately when dropdown value changes
+                                          if (newValue) {
+                                            console.log('⏰ Setting auto-save timeout for:', key);
+                                            setTimeout(() => {
+                                              console.log('🚀 Auto-save timeout triggered for:', key);
+                                              handleSaveEdit();
+                                            }, 200);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          console.log('👁️ Dropdown blur event:', {
+                                            field: key,
+                                            recordId: record.id,
+                                            editValue,
+                                            timestamp: new Date().toISOString()
+                                          });
+                                          
+                                          if (editValue) {
+                                            console.log('💾 Blur save triggered');
+                                            handleSaveEdit();
+                                          } else {
+                                            console.log('❌ Blur cancel triggered');
+                                            handleCancelEdit();
+                                          }
+                                        }}
+                                        className="px-2 py-1 border border-border rounded text-sm bg-card text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
+                                        autoFocus
+                                      >
+                                        <option value="">Select {key}</option>
+                                        {key === 'Category' ? (
+                                          fieldOptions.Category?.map((option: any, index: number) => (
+                                            <option key={`category-${option.value}-${index}`} value={option.value}>
+                                              {option.label}
+                                            </option>
+                                          ))
+                                        ) : (
+                                          fieldOptions.Subcategory?.map((option: any, index: number) => (
+                                            <option key={`subcategory-${option.value}-${index}`} value={option.value}>
+                                              {option.label}
+                                            </option>
+                                          ))
+                                        )}
+                                      </select>
                                     ) : (
                                       <div
                                         onClick={() => handleFieldEdit(record.id, key, String(record[key] || ''))}
-                                        className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded"
+                                        className="cursor-pointer hover:bg-muted/50 px-2 py-1 rounded transition-colors"
                                       >
                                         {record[key] || 'Click to select'}
                                       </div>
