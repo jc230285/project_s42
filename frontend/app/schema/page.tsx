@@ -113,20 +113,41 @@ export default function SchemaPage() {
       if (result.success) {
         toast.success(`${getFieldNameFromId(fieldId)} updated successfully!`);
         
-        // Update local state immediately for real-time feedback
-        setSchemaTableData((prevData: any[]) => 
-          prevData.map((record: any) => 
-            String(record.id) === String(recordId) 
-              ? { ...record, [getFieldNameFromId(fieldId)]: value }
-              : record
-          )
-        );
+        console.log('🔄 Updating local state:', {
+          recordId,
+          fieldName: getFieldNameFromId(fieldId),
+          newValue: value,
+          recordIdType: typeof recordId,
+          schemaDataLength: schemaTableData?.length
+        });
         
-        // Refresh data from server to ensure consistency after a short delay
-        setTimeout(() => {
-          console.log('🔄 Refreshing data after successful update');
-          handleGetSchemaTable();
-        }, 500);
+        // Update local state immediately for real-time feedback
+        setSchemaTableData((prevData: any[]) => {
+          const updatedData = prevData.map((record: any) => {
+            const recordMatches = String(record.id) === String(recordId);
+            console.log('🔍 Record comparison:', {
+              recordId: record.id,
+              recordIdType: typeof record.id,
+              targetRecordId: recordId,
+              targetRecordIdType: typeof recordId,
+              matches: recordMatches
+            });
+            
+            if (recordMatches) {
+              const updatedRecord = { ...record, [getFieldNameFromId(fieldId)]: value };
+              console.log('✅ Updating record:', {
+                original: record,
+                updated: updatedRecord,
+                fieldChanged: getFieldNameFromId(fieldId)
+              });
+              return updatedRecord;
+            }
+            return record;
+          });
+          
+          console.log('� State update completed');
+          return updatedData;
+        });
         
         return true;
       } else {
@@ -184,9 +205,14 @@ export default function SchemaPage() {
 
     const success = await updateNocoDBField(editingField.recordId, fieldId, value);
     if (success) {
+      console.log('✅ Edit completed successfully, clearing edit mode:', {
+        recordId: editingField.recordId,
+        fieldName: editingField.fieldName,
+        newValue: value
+      });
       setEditingField(null);
       setEditValue('');
-      console.log('✅ Edit completed successfully');
+      console.log('🔄 Edit mode cleared');
     } else {
       console.log('❌ Edit failed');
     }
@@ -257,6 +283,18 @@ export default function SchemaPage() {
       
       setSchemaTableData(records);
       
+      // Debug: Log the first record to understand the data structure
+      if (records && records.length > 0) {
+        console.log('📋 Schema data structure:', {
+          totalRecords: records.length,
+          firstRecord: records[0],
+          recordKeys: Object.keys(records[0]),
+          idField: records[0].id,
+          IdField: records[0].Id,
+          idType: typeof records[0].id,
+          IdType: typeof records[0].Id
+        });
+      }
       // Log debugging information
       if (debugInfo) {
         console.log('Schema API Debug Info:', debugInfo);
@@ -385,7 +423,7 @@ export default function SchemaPage() {
                       </thead>
                       <tbody className="bg-card divide-y divide-border">
                         {groupedData[tableName].map((record, index) => (
-                          <tr key={index} className="hover:bg-muted/50">
+                          <tr key={`${tableName}-${record.id}-${index}`} className="hover:bg-muted/50">
                             {(() => {
                               // Use same column ordering as header
                               const preferredOrder = ['Field Name', 'Type', 'Description', 'Field Order', 'Category', 'Subcategory', 'Options'];
@@ -442,7 +480,7 @@ export default function SchemaPage() {
                                     editingField?.recordId === record.id && editingField?.fieldName === key ? (
                                       <select
                                         value={editValue}
-                                        onChange={(e) => {
+                                        onChange={async (e) => {
                                           console.log('🔽 Dropdown changed:', {
                                             field: key,
                                             recordId: record.id,
@@ -453,30 +491,27 @@ export default function SchemaPage() {
                                           
                                           const newValue = e.target.value;
                                           setEditValue(newValue);
-                                          // Auto-save immediately when dropdown value changes
-                                          if (newValue) {
-                                            console.log('⏰ Setting auto-save timeout for:', key);
-                                            setTimeout(() => {
-                                              console.log('🚀 Auto-save timeout triggered for:', key);
-                                              handleSaveEdit();
-                                            }, 200);
+                                          console.log('📝 Edit value updated to:', newValue);
+                                          
+                                          // Save immediately on change
+                                          if (newValue && newValue.trim() !== '') {
+                                            console.log('💾 Immediate save triggered for dropdown:', key);
+                                            const success = await updateNocoDBField(record.id, 
+                                              key === 'Category' ? 'c3xywkmub993x24' : 'ceznmyuazlgngiw', 
+                                              newValue);
+                                            if (success) {
+                                              // Clear edit mode after successful save
+                                              setEditingField(null);
+                                              setEditValue('');
+                                              console.log('✅ Immediate save completed, edit mode cleared');
+                                            }
                                           }
                                         }}
                                         onBlur={() => {
-                                          console.log('👁️ Dropdown blur event:', {
-                                            field: key,
-                                            recordId: record.id,
-                                            editValue,
-                                            timestamp: new Date().toISOString()
-                                          });
-                                          
-                                          if (editValue) {
-                                            console.log('💾 Blur save triggered');
-                                            handleSaveEdit();
-                                          } else {
-                                            console.log('❌ Blur cancel triggered');
-                                            handleCancelEdit();
-                                          }
+                                          console.log('👁️ Dropdown blur event - clearing edit mode if not already cleared');
+                                          // Just clear edit mode on blur since save happens on change
+                                          setEditingField(null);
+                                          setEditValue('');
                                         }}
                                         className="px-2 py-1 border border-border rounded text-sm bg-card text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
                                         autoFocus

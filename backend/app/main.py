@@ -461,9 +461,42 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
     """Get schema data from NocoDB schema table"""
     print("SCHEMA ENDPOINT CALLED - Starting to process schema data")
     try:
+        # Get user-specific NocoDB token, fallback to environment token
+        user_token = None
+        user_email = current_user.get('email')
+        print(f"🔑 Getting API token for user: {user_email}")
+        
+        if user_email:
+            try:
+                # Get user's NocoDB token from database
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                print(f"🔍 Database query result for {user_email}: {user_data}")
+                if user_data and user_data['nocodb_api']:
+                    user_token = user_data['nocodb_api']
+                    print(f"✅ Using user-specific NocoDB token for {user_email}: {str(user_token)[:20]}...")
+                else:
+                    print(f"⚠️ No user-specific token found for {user_email}, using admin token")
+                    print(f"   User data: {user_data}")
+                    print(f"   nocodb_api field: {user_data.get('nocodb_api') if user_data else 'No user found'}")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
         # Get NocoDB configuration from environment variables
         nocodb_api_url = os.getenv("NOCODB_API_URL")
-        nocodb_api_token = os.getenv("NOCODB_API_TOKEN")
         nocodb_base_id = os.getenv("NOCODB_BASE_ID")
         nocodb_schema_table_id = "m72851bbm1z0qul"  # Schema table ID
         
@@ -473,9 +506,9 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
                 content={"error": "NOCODB_API_URL environment variable not set"}, 
                 status_code=500
             )
-        if not nocodb_api_token:
+        if not api_token:
             return JSONResponse(
-                content={"error": "NOCODB_API_TOKEN environment variable not set"}, 
+                content={"error": "No NocoDB API token available"}, 
                 status_code=500
             )
         if not nocodb_base_id:
@@ -489,7 +522,7 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
         
         # Set up headers for NocoDB API
         headers = {
-            "xc-token": nocodb_api_token,
+            "xc-token": api_token,
             "Content-Type": "application/json"
         }
         
@@ -510,8 +543,9 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
                     "config": {
                         "nocodb_api_url": nocodb_api_url,
                         "nocodb_schema_table_id": nocodb_schema_table_id,
-                        "has_token": bool(nocodb_api_token),
-                        "has_base_id": bool(nocodb_base_id)
+                        "has_token": bool(api_token),
+                        "has_base_id": bool(nocodb_base_id),
+                        "using_user_token": bool(user_token)
                     }
                 }, 
                 status_code=500
@@ -1162,29 +1196,34 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
     try:
         # Get user's personal API token if available, otherwise use environment token
         user_token = None
-        if current_user and current_user.get("authenticated"):
-            user_email = current_user.get("email")
-            if user_email:
-                try:
-                    conn = mysql.connector.connect(
-                        host=os.getenv("DB_HOST"),
-                        user=os.getenv("DB_USER"),
-                        password=os.getenv("DB_PASSWORD"),
-                        database=os.getenv("DB_NAME"),
-                        port=int(os.getenv("DB_PORT", 3306))
-                    )
-                    cursor = conn.cursor(dictionary=True)
-                    cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
-                    user_data = cursor.fetchone()
-                    if user_data and user_data.get('nocodb_api'):
-                        user_token = user_data['nocodb_api']
-                        print(f"✅ Using user-specific NocoDB token for {user_email}")
-                    else:
-                        print(f"⚠️ No user-specific token found for {user_email}, using admin token")
-                    cursor.close()
-                    conn.close()
-                except Exception as e:
-                    print(f"Error fetching user token: {e}")
+        user_email = current_user.get('email')
+        print(f"🔑 UPDATE ENDPOINT - Getting API token for user: {user_email}")
+        
+        if user_email:
+            try:
+                # Get user's NocoDB token from database
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                print(f"🔍 UPDATE ENDPOINT - Database query result for {user_email}: {user_data}")
+                if user_data and user_data['nocodb_api']:
+                    user_token = user_data['nocodb_api']
+                    print(f"✅ UPDATE ENDPOINT - Using user-specific NocoDB token for {user_email}: {str(user_token)[:20]}...")
+                else:
+                    print(f"⚠️ UPDATE ENDPOINT - No user-specific token found for {user_email}, using admin token")
+                    print(f"   User data: {user_data}")
+                    print(f"   nocodb_api field: {user_data.get('nocodb_api') if user_data else 'No user found'}")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
         
         # Use user token if available, otherwise fall back to environment token
         api_token = user_token or os.getenv("NOCODB_API_TOKEN")
@@ -1212,6 +1251,8 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
         print(f"   URL: {nocodb_url}")
         print(f"   Payload: {update_payload}")
         print(f"   Token type: {'user' if user_token else 'admin'}")
+        print(f"   Using token: {str(api_token)[:20]}...{str(api_token)[-10:] if len(str(api_token)) > 30 else str(api_token)}")
+        print(f"   Token length: {len(str(api_token))}")
         
         response = requests.patch(nocodb_url, json=update_payload, headers=headers, verify=False)
         
