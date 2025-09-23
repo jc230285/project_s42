@@ -1,0 +1,39 @@
+name: Self-Hosted Auto Deploy
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Stop existing containers
+      run: |
+        docker compose down || true
+        
+    - name: Clean up old images
+      run: |
+        docker image prune -f || true
+        
+    - name: Build and start containers
+      run: |
+        docker compose build --no-cache
+        docker compose up -d
+        
+    - name: Verify deployment
+      run: |
+        sleep 30
+        docker compose ps
+        
+        # Test if services are responding
+        curl -f http://localhost:8150/docs || exit 1
+        curl -f http://localhost:3150 || exit 1
+        
+    - name: Clean up build cache
+      run: |
+        docker builder prune -f || true

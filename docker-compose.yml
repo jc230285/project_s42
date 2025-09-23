@@ -10,6 +10,7 @@ services:
       - "3150:3000"
     depends_on:
       - backend
+    restart: unless-stopped
     networks:
       - db-net
   backend:
@@ -20,6 +21,7 @@ services:
       - ./.env
     ports:
       - "8150:8000"
+    restart: unless-stopped
     networks:
       - db-net
 volumes:

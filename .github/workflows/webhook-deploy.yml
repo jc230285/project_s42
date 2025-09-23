@@ -1,0 +1,17 @@
+name: Webhook Auto Deploy
+
+on:
+  repository_dispatch:
+    types: [webhook-deploy]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy via webhook
+      uses: distributhor/workflow-webhook@v3
+      env:
+        webhook_url: ${{ secrets.WEBHOOK_URL }}
+        webhook_secret: ${{ secrets.WEBHOOK_SECRET }}
+        data: '{"action": "deploy", "branch": "${{ github.ref }}", "commit": "${{ github.sha }}"}'
