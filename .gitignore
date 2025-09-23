@@ -4,6 +4,7 @@ node_modules/
 # Env
 .env
 .env.*
+remote.env
 
 # Logs
 *.log
