@@ -49,9 +49,6 @@ def get_plots_simple(current_user: dict = Depends(get_current_user), plot_ids: O
         if plot_ids:
             selected_plot_ids = [pid.strip() for pid in plot_ids.split(',') if pid.strip()]
         
-        print(f"DEBUG: Received plot_ids: {plot_ids}")
-        print(f"DEBUG: Parsed selected_plot_ids: {selected_plot_ids}")
-        
         # Get plots data
         plots_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_plots_table_id}/records"
         plots_params = {"limit": 1000, "offset": 0}
@@ -63,11 +60,6 @@ def get_plots_simple(current_user: dict = Depends(get_current_user), plot_ids: O
         plots_data = plots_response.json()
         all_plots = plots_data.get("list", [])
         
-        print(f"DEBUG: Total plots in database: {len(all_plots)}")
-        if all_plots:
-            sample_plot_ids = [plot.get("Plot ID", "") for plot in all_plots[:3]]
-            print(f"DEBUG: Sample plot IDs: {sample_plot_ids}")
-        
         # Filter plots if specific IDs requested
         if selected_plot_ids:
             filtered_plots = []
@@ -75,7 +67,6 @@ def get_plots_simple(current_user: dict = Depends(get_current_user), plot_ids: O
                 plot_id = plot.get("Plot ID", "")
                 if plot_id in selected_plot_ids:
                     filtered_plots.append(plot)
-            print(f"DEBUG: Found {len(filtered_plots)} matching plots")
         else:
             filtered_plots = all_plots
         

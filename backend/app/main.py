@@ -631,18 +631,13 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
         # Helper function to get order from options
         def get_option_order(value, options_list):
             """Get the order number for a given value from the options list"""
-            print(f"🔍 get_option_order called with value='{value}', options_list has {len(options_list) if options_list else 0} items")
             if not value or not options_list:
-                print(f"🔍 Returning 999 because value='{value}' or options_list is empty")
                 return 999
             for option in options_list:
                 option_value = option.get("value", "")
-                print(f"🔍 Comparing '{value.lower()}' with '{option_value.lower()}'")
                 if option_value.lower() == value.lower():
                     order = option.get("order", 999)
-                    print(f"✅ Found match! Returning order {order}")
                     return order
-            print(f"❌ No match found for '{value}', returning 999")
             return 999
         
         # Second pass: process records with proper category and subcategory ordering
@@ -771,9 +766,6 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
         if plot_ids:
             selected_plot_ids = [pid.strip() for pid in plot_ids.split(',') if pid.strip()]
         
-        print(f"DEBUG: Received plot_ids parameter: {plot_ids}")
-        print(f"DEBUG: Parsed selected_numeric_plot_ids: {selected_plot_ids}")
-        
         # Get plots data
         plots_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_plots_table_id}/records"
         plots_params = {"limit": 1000, "offset": 0}
@@ -787,8 +779,6 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
         
         plots_data = plots_response.json()
         all_plots = plots_data.get("list", [])
-        
-        print(f"DEBUG: Total plots in database: {len(all_plots)}")
         
         # Get projects data
         projects_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_projects_table_id}/records"
@@ -809,16 +799,11 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
         linked_projects = []
         
         if selected_plot_ids:
-            print(f"DEBUG: Looking for plots with numeric IDs: {selected_plot_ids}")
-            
             # Find plots by their database ID
             for plot in all_plots:
                 plot_id = str(plot.get("Id", ""))
                 if plot_id in selected_plot_ids:
                     filtered_plots.append(plot)
-                    print(f"DEBUG: Found plot with ID {plot_id}, ProjectID: {plot.get('ProjectID')}")
-            
-            print(f"DEBUG: Found {len(filtered_plots)} matching plots")
             
             # Now find the linked projects based on ProjectID relationship
             project_ids_to_find = []
@@ -831,16 +816,11 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
                     else:
                         project_ids_to_find.append(str(project_id))
             
-            print(f"DEBUG: Looking for projects with IDs: {project_ids_to_find}")
-            
             # Find matching projects by their ID
             for project in all_projects:
                 project_id = str(project.get("Id", ""))
                 if project_id in project_ids_to_find:
                     linked_projects.append(project)
-                    print(f"DEBUG: Found linked project with ID {project_id}: {project.get('Project Name')}")
-            
-            print(f"DEBUG: Found {len(linked_projects)} linked projects")
             
         else:
             # If no filter, get all plots and all projects
@@ -852,7 +832,6 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
         for plot in filtered_plots:
             # Use the LandplotD field (cf11jae1lts4tb1) as the plot title
             plot_title = plot.get("cf11jae1lts4tb1", "") or plot.get("LandplotD", "") or plot.get("Plot ID", "")
-            print(f"DEBUG: Plot ID {plot.get('Id')}: Using title '{plot_title}' from field cf11jae1lts4tb1")
             
             processed_plots.append({
                 "id": plot.get("Id"),

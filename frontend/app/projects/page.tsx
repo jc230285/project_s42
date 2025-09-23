@@ -460,53 +460,12 @@ export default function ProjectsPage() {
             </div>
           </div>
 
-        {/* Status notification for cookie-loaded plots */}
-        {selectedPlotIds.length > 0 && (
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-primary">
-                📍 {selectedPlotIds.length} plot(s) loaded from saved selection: {selectedPlotIds.join(', ')}
-              </div>
-              <Button 
-                onClick={clearPlotSelection} 
-                size="sm" 
-                variant="ghost"
-                className="text-xs text-primary hover:text-primary/80"
-              >
-                Clear Selection
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* Filtering Controls moved to slide-in sidebar */}
 
         {/* Plots Results Section */}
         {selectedPlotIds.length > 0 && (
           <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-medium text-foreground">Plot Results</h2>
-              <div className="flex items-center gap-3">
-                <Button 
-                  onClick={refreshPlotsData} 
-                  disabled={plotsLoading || selectedPlotIds.length === 0}
-                  size="sm"
-                  variant="outline"
-                  className="text-xs"
-                >
-                  {plotsLoading ? 'Refreshing...' : 'Refresh'}
-                </Button>
-                <div className="text-sm text-muted-foreground">
-                  {plotsData && (
-                    <>
-                      {plotsData.plots_count} plots, {plotsData.projects_count} linked projects
-                      {plotsData.schema_fields_mapped > 0 && ` • ${plotsData.schema_fields_mapped} schema fields mapped`}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {plotsLoading && (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -519,31 +478,38 @@ export default function ProjectsPage() {
                 {/* Plots Data with Schema Layout */}
                 {plotsData.plots.length > 0 && (
                   <div>
-                    <h3 className="text-md font-medium text-foreground mb-3">Land Plots Data</h3>
                     <div className="flex gap-4 overflow-x-auto pb-4">
                       {plotsData.plots.map((plot) => (
                         <div key={plot.id} className="bg-muted/30 rounded-lg p-4 border border-border/50 min-w-96 flex-shrink-0">
                           {/* Plot Header */}
-                          <div className="font-medium text-lg text-foreground mb-3 border-b border-border/20 pb-2">
-                            Plot: {plot.plot_id || plot.id}
+                          <div className="mb-3 border-b border-border/20 pb-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-900 dark:text-blue-200">
+                                S{String(plot.plot_id || plot.id).padStart(3, '0')}
+                              </span>
+                              {(() => {
+                                // Find associated project ID from plotsData.projects
+                                const associatedProject = plotsData.projects.find(project => 
+                                  project.basic_data && plot.basic_data && 
+                                  project.basic_data['Project Name'] && plot.basic_data['Project Name'] &&
+                                  project.basic_data['Project Name'] === plot.basic_data['Project Name']
+                                );
+                                const projectId = associatedProject?.basic_data?.Id || 
+                                                associatedProject?.basic_data?.id ||
+                                                associatedProject?.id;
+                                return projectId && (
+                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200 dark:bg-green-900 dark:text-green-200">
+                                    P{String(projectId).padStart(3, '0')}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </div>
                           
                           {/* Schema Fields with Inline Data Values */}
                           <div className="bg-background/50 rounded-md p-3 border border-border/30">
-                            <h4 className="text-sm font-medium text-foreground mb-2">Schema Fields with Data Values</h4>
                             
-                            {/* Debug: Show available field names */}
-                            <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                              <div className="font-medium text-yellow-800 mb-1">Debug Info:</div>
-                              <div className="text-yellow-700">
-                                <div>Plot fields available: {plot.basic_data ? Object.keys(plot.basic_data).join(', ') : 'None'}</div>
-                                <div>Project fields available: {plotsData.projects.length > 0 && plotsData.projects[0].basic_data ? Object.keys(plotsData.projects[0].basic_data).join(', ') : 'None'}</div>
-                                <div>Schema field count: {schemaData.length}</div>
-                                <div>First 5 schema fields: {schemaData.slice(0, 5).map(f => f["Field Name"]).join(', ')}</div>
-                              </div>
-                            </div>
-
-                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                            <div className="space-y-2">
                               {(() => {
                                 // Get all field names that actually exist in this plot's data
                                 const plotFieldNames = plot.basic_data ? Object.keys(plot.basic_data) : [];
