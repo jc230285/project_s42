@@ -260,8 +260,12 @@ export default function ProjectsPage() {
       setPlotsLoading(true);
       console.log('Fetching plots data with IDs:', selectedPlotIds);
       
-      // Call backend endpoint with selected plot IDs
-      const plotIdsParam = selectedPlotIds.join(',');
+      // Convert S### format to numeric format for API (S013 -> 013, S001 -> 001)
+      const formattedPlotIds = selectedPlotIds.map(siteId => formatPlotIdForAPI(siteId)).filter(id => id);
+      const plotIdsParam = formattedPlotIds.join(',');
+      
+      console.log('Converted plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
+      
       const response = await makeAuthenticatedRequest(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}`
       );
@@ -292,13 +296,20 @@ export default function ProjectsPage() {
     return match ? match[1] : '';
   };
 
-  // Handle plot selection (now selecting individual plots by numeric Site ID)
-  const handlePlotSelection = (plotId: string, isSelected: boolean) => {
+  // Helper function to format numeric ID for API (S013 -> "13", S001 -> "1")
+  const formatPlotIdForAPI = (siteId: string): string => {
+    const numericId = extractNumericId(siteId);
+    if (!numericId) return '';
+    return parseInt(numericId, 10).toString(); // Convert to number then back to string to remove leading zeros
+  };
+
+  // Handle plot selection (store full S### format)
+  const handlePlotSelection = (siteId: string, isSelected: boolean) => {
     setSelectedPlotIds(prev => {
       if (isSelected) {
-        return [...prev, plotId];
+        return [...prev, siteId]; // Store full site ID like "S013"
       } else {
-        return prev.filter(id => id !== plotId);
+        return prev.filter(id => id !== siteId);
       }
     });
   };
@@ -617,17 +628,14 @@ export default function ProjectsPage() {
                           >
                             <div className="flex items-center gap-2 flex-wrap">
                               {/* Site ID Bubble */}
-                              {(() => {
-                                const numericId = extractNumericId(plot.site_id);
-                                return (
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedPlotIds.includes(numericId)}
-                                    onChange={(e) => handlePlotSelection(numericId, e.target.checked)}
-                                    className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-primary"
-                                  />
-                                );
-                              })()}
+                              {plot.site_id && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedPlotIds.includes(plot.site_id)}
+                                  onChange={(e) => handlePlotSelection(plot.site_id, e.target.checked)}
+                                  className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-primary"
+                                />
+                              )}
                               {plot.site_id && (
                                 <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full border border-blue-200 dark:bg-blue-900 dark:text-blue-200">
                                   {plot.site_id}
