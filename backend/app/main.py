@@ -67,22 +67,24 @@ app = FastAPI(
     ]
 )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
-    allow_credentials=False,  # Must be False when using "*" origins
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Add manual CORS handler for troubleshooting
-@app.options("/{full_path:path}")
-async def options_handler(full_path: str):
-    return {"message": "OK"}
-
+# Custom CORS middleware - handles all CORS requests
 @app.middleware("http")
 async def cors_handler(request, call_next):
+    print(f"🌐 CORS Request: {request.method} {request.url}")
+    print(f"🔍 Origin: {request.headers.get('origin', 'None')}")
+    print(f"📋 Headers: {dict(request.headers)}")
+    
+    if request.method == "OPTIONS":
+        print("✅ Handling OPTIONS preflight request")
+        return JSONResponse(
+            content={"message": "OK"},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "3600",
+            }
+        )
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
@@ -167,7 +169,7 @@ def _coerce_float(value):
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000"],
+    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000", "http://localhost:3150"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -422,6 +424,38 @@ def get_projects(current_user: dict = Depends(get_current_user), partner_filter:
         )
 
 
+from fastapi.responses import JSONResponse
+
+# Add specific OPTIONS handler for projects/schema
+@app.options("/projects/schema")
+async def options_projects_schema():
+    """Handle OPTIONS requests for /projects/schema CORS preflight"""
+    print("✅ Specific OPTIONS handler for /projects/schema")
+    return JSONResponse(
+        content={"message": "OK"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
+
+# Add universal OPTIONS handler for CORS preflight (catch-all)
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    """Handle all other OPTIONS requests for CORS preflight"""
+    print(f"✅ Universal OPTIONS handler for path: /{full_path}")
+    return JSONResponse(
+        content={"message": "OK"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
+
 @app.get("/projects/schema", tags=["Projects"])
 def get_schema_data(current_user: dict = Depends(get_current_user)):
     """Get schema data from NocoDB schema table"""
@@ -487,100 +521,146 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
         data = response.json()
         schema_records = data.get("list", [])
         
-        # Define sorting order for categories and subcategories
+        print(f"📊 Raw NocoDB data structure:")
+        print(f"   - Total records: {len(schema_records)}")
+        if schema_records:
+            print(f"   - First record keys: {list(schema_records[0].keys())}")
+            print(f"   - First record sample: {schema_records[0]}")
+        
+        # Process the data for frontend consumption
+        # The data from NocoDB v2 already has properly formatted Category/Subcategory values
+        # We need to transform it for the frontend table display
+        
+        def parse_select_options(options_string):
+            """Parse NocoDB SingleSelect options string into frontend-friendly format"""
+            if not options_string or options_string in ["", "Long Text field", "DateTime field", "Decimal field", "URL field"]:
+                return []
+            
+            options = []
+            # Split by " | " to get individual options
+            option_parts = options_string.split(" | ")
+            for option_part in option_parts:
+                try:
+                    # Format: "OptionName (Color: #color, Order: N, ID: ...)"
+                    if "(" in option_part and "Order:" in option_part:
+                        name = option_part.split(" (")[0].strip()
+                        # Extract order number
+                        order_part = option_part.split("Order: ")[1].split(",")[0].strip()
+                        order = int(order_part)
+                        
+                        # Extract color if available
+                        color = "#cfdffe"  # default color
+                        if "Color: " in option_part:
+                            color_part = option_part.split("Color: ")[1].split(",")[0].strip()
+                            color = color_part
+                        
+                        options.append({
+                            "value": name,
+                            "label": name,
+                            "order": order,
+                            "color": color
+                        })
+                    else:
+                        # Fallback for simple options
+                        name = option_part.strip()
+                        if name:
+                            options.append({
+                                "value": name,
+                                "label": name,
+                                "order": 999,
+                                "color": "#cfdffe"
+                            })
+                except (IndexError, ValueError):
+                    # Skip malformed options
+                    continue
+            
+            # Sort by order
+            options.sort(key=lambda x: x["order"])
+            return options
+        
+        # Collect dropdown options for Category and Subcategory fields
+        category_options = []
+        subcategory_options = []
+        
+        processed_records = []
+        for record in schema_records:
+            # Check if this is a Category or Subcategory field definition
+            field_name = record.get("Field Name", "")
+            field_type = record.get("Type", "")
+            options_raw = record.get("Options", "")
+            
+            if field_name == "Category" and field_type == "SingleSelect":
+                category_options = parse_select_options(options_raw)
+            elif field_name == "Subcategory" and field_type == "SingleSelect":
+                subcategory_options = parse_select_options(options_raw)
+            
+            # Map the NocoDB fields to frontend expected format
+            processed_record = {
+                "id": record.get("id"),
+                "Field Name": record.get("Field Name", ""),
+                "Description": record.get("Description", ""),
+                "Field Order": record.get("Field Order", 999),
+                "Category": record.get("Category", ""),
+                "Subcategory": record.get("Subcategory", ""),
+                "Type": record.get("Type", ""),
+                "Field ID": record.get("Field ID", ""),
+                "Table": record.get("Table", ""),
+                "meta": record.get("meta", ""),
+                "Options": record.get("Options", ""),
+                "created_at": record.get("created_at"),
+                "updated_at": record.get("updated_at")
+            }
+            processed_records.append(processed_record)
+        
+        # Sort the records by Category, Subcategory, then Field Order
+        # This will organize the data properly for the frontend
         def get_sort_key(record):
-            # Helper function to get numeric value for ordering, defaulting to 999 if not found
+            # Helper function for safe integer conversion
             def safe_int(value, default=999):
                 try:
                     return int(value) if value is not None else default
                 except (ValueError, TypeError):
                     return default
             
-            # Extract sorting values
-            category = record.get("Category", "")
-            subcategory = record.get("Subcategory", "")
+            category = str(record.get("Category", "")).lower()
+            subcategory = str(record.get("Subcategory", "")).lower()
             field_order = safe_int(record.get("Field Order", 999))
             
-            # Parse live ordering from SingleSelect field options
-            def parse_select_options(options_string):
-                """Parse the options string to extract order mapping"""
-                order_map = {}
-                if not options_string:
-                    return order_map
-                
-                # Split by " | " to get individual options
-                options = options_string.split(" | ")
-                for option in options:
-                    try:
-                        # Extract option name and order
-                        # Format: "OptionName (Color: #color, Order: N, ID: ...)"
-                        if "(" in option and "Order:" in option:
-                            name = option.split(" (")[0].strip()
-                            order_part = option.split("Order: ")[1].split(",")[0].strip()
-                            order = safe_int(order_part, 999)
-                            order_map[name] = order
-                        else:
-                            # Fallback: use the option name as-is with high order
-                            name = option.strip()
-                            order_map[name] = 999
-                    except (IndexError, ValueError):
-                        # Skip malformed options
-                        continue
-                
-                return order_map
-            
-            # Find Category and Subcategory field definitions to get their options
-            category_order_map = {}
-            subcategory_order_map = {}
-            
-            for schema_record in schema_records:
-                field_name = schema_record.get("Field Name", "")
-                field_id = schema_record.get("Field ID", "")
-                options = schema_record.get("Options", "")
-                
-                if field_name == "Category" or field_id == "c3xywkmub993x24":
-                    category_order_map = parse_select_options(options)
-                elif field_name == "Subcategory" or field_id == "ceznmyuazlgngiw":
-                    subcategory_order_map = parse_select_options(options)
-            
-            # Get the order for this record's category and subcategory
-            category_order = category_order_map.get(category, 999)
-            subcategory_order = subcategory_order_map.get(subcategory, 999)
-            
-            # Log the ordering for debugging
-            import logging
-            logging.basicConfig(level=logging.INFO)
-            logger = logging.getLogger(__name__)
-            logger.info(f"SCHEMA_ORDER: Record '{record.get('Field Name', '')}' - Category: '{category}' (order: {category_order}), Subcategory: '{subcategory}' (order: {subcategory_order}), Field Order: {field_order}")
-            
-            return (category_order, subcategory_order, field_order)
+            return (category, subcategory, field_order)
         
-        # Sort the records
-        sorted_records = sorted(schema_records, key=get_sort_key)
+        # Sort the processed records
+        sorted_records = sorted(processed_records, key=get_sort_key)
         
-        # Add debugging info about pagination
-        page_info = data.get("pageInfo", {})
+        print(f"✅ Processed {len(sorted_records)} schema records for frontend")
+        print(f"📋 Found {len(category_options)} category options and {len(subcategory_options)} subcategory options")
         
-        # Return data with pagination info for debugging
-        return JSONResponse(content={
-            "records": sorted_records,
-            "count": len(sorted_records),
-            "pageInfo": page_info,
-            "totalRecords": page_info.get("totalRows", len(schema_records)),
-            "debug": {
-                "table_id": nocodb_schema_table_id,
-                "requested_limit": 1000,
-                "response_keys": list(data.keys()),
-                "sorting_applied": True,
-                "sort_order": "Category -> Subcategory -> Field Order (Using LIVE order from SingleSelect options)",
-                "dynamic_sorting": True,
-                "live_ordering": "Reading Order values from Category and Subcategory field options",
-                "category_field_id": "c3xywkmub993x24",
-                "subcategory_field_id": "ceznmyuazlgngiw",
-                "categories_found": list(set(r.get("Category", "") for r in schema_records if r.get("Category"))),
-                "subcategories_found": list(set(r.get("Subcategory", "") for r in schema_records if r.get("Subcategory")))
+        return JSONResponse(
+            content={
+                "list": sorted_records,
+                "count": len(sorted_records),
+                "pageInfo": data.get("pageInfo", {}),
+                "totalRecords": len(sorted_records),
+                "fieldOptions": {
+                    "Category": category_options,
+                    "Subcategory": subcategory_options
+                },
+                "debug": {
+                    "table_id": nocodb_schema_table_id,
+                    "requested_limit": params.get("limit"),
+                    "response_keys": list(data.keys()),
+                    "sorting_applied": True,
+                    "sort_order": "Category -> Subcategory -> Field Order (Alphabetical)",
+                    "processing": "NocoDB v2 format with direct field mapping and parsed dropdown options",
+                    "categories_found": list(set(r.get("Category", "") for r in processed_records)),
+                    "subcategories_found": list(set(r.get("Subcategory", "") for r in processed_records))
+                }
+            },
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
             }
-        })
+        )
         
     except requests.exceptions.RequestException as e:
         return JSONResponse(

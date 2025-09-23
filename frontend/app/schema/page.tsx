@@ -17,6 +17,7 @@ export default function SchemaPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [schemaTableData, setSchemaTableData] = useState<any>(null)
+  const [fieldOptions, setFieldOptions] = useState<any>({})
   const [isLoadingTable, setIsLoadingTable] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [editingField, setEditingField] = useState<EditingField | null>(null)
@@ -175,13 +176,19 @@ export default function SchemaPage() {
       const data = await response.json();
       
       // Handle both old format (array) and new format (object with records)
-      let records = Array.isArray(data) ? data : data.records || data;
+      let records = Array.isArray(data) ? data : data.list || data.records || data;
       let debugInfo = Array.isArray(data) ? null : {
         count: data.count,
         totalRecords: data.totalRecords,
         pageInfo: data.pageInfo,
         debug: data.debug
       };
+      
+      // Store field options for dropdowns
+      if (data.fieldOptions) {
+        setFieldOptions(data.fieldOptions);
+        console.log('Field Options Available:', data.fieldOptions);
+      }
       
       setSchemaTableData(records);
       
@@ -292,7 +299,7 @@ export default function SchemaPage() {
                         <tr>
                           {(() => {
                             // Define preferred column order for better readability
-                            const preferredOrder = ['Field Name', 'Type', 'Description', 'Field Order', 'Field ID', 'Category', 'Subcategory', 'Options'];
+                            const preferredOrder = ['Field Name', 'Type', 'Description', 'Field Order', 'Category', 'Subcategory', 'Options'];
                             const availableKeys = Object.keys(groupedData[tableName][0])
                               .filter(key => key !== 'Table') // Don't show the Table field in the table
                               .filter(key => !['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'nc_order', 'meta', 'category_order', 'subcategory_order'].includes(key)); // Hide unwanted columns but keep Options
@@ -316,7 +323,7 @@ export default function SchemaPage() {
                           <tr key={index} className="hover:bg-muted/50">
                             {(() => {
                               // Use same column ordering as header
-                              const preferredOrder = ['Field Name', 'Type', 'Description', 'Field Order', 'Field ID', 'Category', 'Subcategory', 'Options'];
+                              const preferredOrder = ['Field Name', 'Type', 'Description', 'Field Order', 'Category', 'Subcategory', 'Options'];
                               const availableKeys = Object.keys(record)
                                 .filter(key => key !== 'Table') // Don't show the Table field in the table
                                 .filter(key => !['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'nc_order', 'meta', 'category_order', 'subcategory_order'].includes(key)); // Hide unwanted columns but keep Options
@@ -383,19 +390,17 @@ export default function SchemaPage() {
                                         >
                                           <option value="">Select {key}</option>
                                           {key === 'Category' ? (
-                                            <>
-                                              <option value="Financial">Financial</option>
-                                              <option value="Technical">Technical</option>
-                                              <option value="Environmental">Environmental</option>
-                                              <option value="Social">Social</option>
-                                              <option value="Legal">Legal</option>
-                                            </>
+                                            fieldOptions.Category?.map((option: any) => (
+                                              <option key={option.value} value={option.value}>
+                                                {option.label}
+                                              </option>
+                                            ))
                                           ) : (
-                                            <>
-                                              <option value="Primary">Primary</option>
-                                              <option value="Secondary">Secondary</option>
-                                              <option value="Optional">Optional</option>
-                                            </>
+                                            fieldOptions.Subcategory?.map((option: any) => (
+                                              <option key={option.value} value={option.value}>
+                                                {option.label}
+                                              </option>
+                                            ))
                                           )}
                                         </select>
                                         <button
@@ -556,17 +561,17 @@ export default function SchemaPage() {
       {/* Description Edit Modal */}
       {showDescriptionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96 max-w-full">
-            <h3 className="text-lg font-semibold mb-4">Edit Description</h3>
+          <div className="bg-card border border-border rounded-lg p-6 w-96 max-w-full">
+            <h3 className="text-lg font-semibold mb-4 text-foreground">Edit Description</h3>
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium mb-2 text-foreground">
                 Field: {selectedRecord?.['Field Name'] || 'Unknown'}
               </label>
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Enter description..."
                 autoFocus
               />
@@ -578,13 +583,13 @@ export default function SchemaPage() {
                   setSelectedRecord(null);
                   setEditValue('');
                 }}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                className="px-4 py-2 text-muted-foreground border border-border rounded hover:bg-accent hover:text-accent-foreground"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveDescription}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
               >
                 Save
               </button>
