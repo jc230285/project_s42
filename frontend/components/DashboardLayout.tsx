@@ -154,7 +154,6 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
       title: 'Projects',
       items: [
         { href: '/projects', icon: FolderOpen, label: 'Projects' },
-        { href: '/sites', icon: MapPin, label: 'Sites' },
         { href: '/map', icon: Map, label: 'Map' },
         { href: '/schema', icon: Database, label: 'Schema' },
       ]
