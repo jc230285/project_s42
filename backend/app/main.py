@@ -1171,10 +1171,13 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
                         port=int(os.getenv("DB_PORT", 3306))
                     )
                     cursor = conn.cursor(dictionary=True)
-                    cursor.execute("SELECT nocodbapi FROM accounts WHERE email = %s", (user_email,))
+                    cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
                     user_data = cursor.fetchone()
-                    if user_data and user_data.get('nocodbapi'):
-                        user_token = user_data['nocodbapi']
+                    if user_data and user_data.get('nocodb_api'):
+                        user_token = user_data['nocodb_api']
+                        print(f"✅ Using user-specific NocoDB token for {user_email}")
+                    else:
+                        print(f"⚠️ No user-specific token found for {user_email}, using admin token")
                     cursor.close()
                     conn.close()
                 except Exception as e:
@@ -1196,7 +1199,16 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
         }
         
         # Make the update request
+        print(f"🔄 Making NocoDB update request:")
+        print(f"   URL: {nocodb_url}")
+        print(f"   Data: {update_data.field_data}")
+        print(f"   Token type: {'user' if user_token else 'admin'}")
+        
         response = requests.patch(nocodb_url, json=update_data.field_data, headers=headers, verify=False)
+        
+        print(f"📡 NocoDB Response: {response.status_code}")
+        if response.status_code != 200:
+            print(f"❌ Error response: {response.text}")
         
         if response.status_code == 200:
             return {"success": True, "data": response.json()}
@@ -1224,10 +1236,13 @@ async def get_nocodb_table_info(table_id: str, current_user: dict = Depends(get_
                         port=int(os.getenv("DB_PORT", 3306))
                     )
                     cursor = conn.cursor(dictionary=True)
-                    cursor.execute("SELECT nocodbapi FROM accounts WHERE email = %s", (user_email,))
+                    cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
                     user_data = cursor.fetchone()
-                    if user_data and user_data.get('nocodbapi'):
-                        user_token = user_data['nocodbapi']
+                    if user_data and user_data.get('nocodb_api'):
+                        user_token = user_data['nocodb_api']
+                        print(f"✅ Using user-specific NocoDB token for {user_email}")
+                    else:
+                        print(f"⚠️ No user-specific token found for {user_email}, using admin token")
                     cursor.close()
                     conn.close()
                 except Exception as e:
