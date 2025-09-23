@@ -111,28 +111,50 @@ export default function ProjectsPage() {
   const [schemaData, setSchemaData] = useState<any[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
   
-  // Load selected plot IDs from localStorage on component mount
+  const [error, setError] = useState<string | null>(null);
+
+  // Cookie utilities
+  const setCookie = (name: string, value: string, days: number = 30) => {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+    document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+  };
+
+  const getCookie = (name: string): string | null => {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for(let i = 0; i < ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+      if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
+  };
+
+  // Load selected plot IDs from cookies on component mount
   useEffect(() => {
-    const savedSelections = localStorage.getItem('selectedPlotIds');  // Changed key
-    console.log('Loading from localStorage:', savedSelections);
+    const savedSelections = getCookie('selectedPlotIds');
+    console.log('Loading from cookies:', savedSelections);
     if (savedSelections) {
       try {
         const parsed = JSON.parse(savedSelections);
         if (Array.isArray(parsed)) {
-          console.log('Setting selectedPlotIds from localStorage:', parsed);
+          console.log('Setting selectedPlotIds from cookies:', parsed);
           setSelectedPlotIds(parsed);
         }
       } catch (error) {
-        console.error('Failed to parse saved plot selections:', error);
+        console.error('Failed to parse saved plot selections from cookies:', error);
       }
     }
   }, []);
   
-  // Save selected plot IDs to localStorage whenever they change
+  // Save selected plot IDs to cookies whenever they change
   useEffect(() => {
-    localStorage.setItem('selectedPlotIds', JSON.stringify(selectedPlotIds));  // Changed key
+    if (selectedPlotIds.length > 0) {
+      setCookie('selectedPlotIds', JSON.stringify(selectedPlotIds));
+      console.log('Saved plot selections to cookies:', selectedPlotIds);
+    }
   }, [selectedPlotIds]);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (status !== "loading" && !session) {
@@ -285,6 +307,16 @@ export default function ProjectsPage() {
   const clearPlotSelection = () => {
     setSelectedPlotIds([]);
     setPlotsData(null);
+    // Clear from cookies too
+    setCookie('selectedPlotIds', '[]');
+  };
+
+  // Refresh plots data - useful for manual refresh
+  const refreshPlotsData = async () => {
+    if (selectedPlotIds.length > 0) {
+      console.log('Manually refreshing plots data for IDs:', selectedPlotIds);
+      await fetchPlotsData();
+    }
   };
 
   // Filter projects based on selected partner and search term
@@ -333,6 +365,20 @@ export default function ProjectsPage() {
       fetchProjectPartners();
       fetchAllProjects();
       fetchSchemaData();
+      
+      // Check if there are saved plot IDs in cookies and refresh plots data
+      const savedPlotIds = getCookie('selectedPlotIds');
+      if (savedPlotIds) {
+        try {
+          const parsed = JSON.parse(savedPlotIds);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log('Found saved plot IDs in cookies, will refresh plots data:', parsed);
+            // The useEffect for selectedPlotIds will handle the actual API call
+          }
+        } catch (error) {
+          console.error('Failed to parse saved plot selections from cookies during init:', error);
+        }
+      }
     }
   }, [session]);
 
@@ -388,6 +434,25 @@ export default function ProjectsPage() {
             </Button>
           </div>
         </div>
+
+        {/* Status notification for cookie-loaded plots */}
+        {selectedPlotIds.length > 0 && (
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-primary">
+                📍 {selectedPlotIds.length} plot(s) loaded from saved selection: {selectedPlotIds.join(', ')}
+              </div>
+              <Button 
+                onClick={clearPlotSelection} 
+                size="sm" 
+                variant="ghost"
+                className="text-xs text-primary hover:text-primary/80"
+              >
+                Clear Selection
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Filtering Controls */}
         <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
@@ -597,13 +662,24 @@ export default function ProjectsPage() {
           <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-medium text-foreground">Plot Results</h2>
-              <div className="text-sm text-muted-foreground">
-                {plotsData && (
-                  <>
-                    {plotsData.plots_count} plots, {plotsData.projects_count} linked projects
-                    {plotsData.schema_fields_mapped > 0 && ` • ${plotsData.schema_fields_mapped} schema fields mapped`}
-                  </>
-                )}
+              <div className="flex items-center gap-3">
+                <Button 
+                  onClick={refreshPlotsData} 
+                  disabled={plotsLoading || selectedPlotIds.length === 0}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                >
+                  {plotsLoading ? 'Refreshing...' : 'Refresh'}
+                </Button>
+                <div className="text-sm text-muted-foreground">
+                  {plotsData && (
+                    <>
+                      {plotsData.plots_count} plots, {plotsData.projects_count} linked projects
+                      {plotsData.schema_fields_mapped > 0 && ` • ${plotsData.schema_fields_mapped} schema fields mapped`}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
