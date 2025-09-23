@@ -111,6 +111,9 @@ export default function ProjectsPage() {
   const [schemaData, setSchemaData] = useState<any[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
   
+  // Sidebar state for filters
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  
   const [error, setError] = useState<string | null>(null);
 
   // Cookie utilities
@@ -377,13 +380,14 @@ export default function ProjectsPage() {
       fetchAllProjects();
       fetchSchemaData();
       
-      // Check if there are saved plot IDs in cookies and refresh plots data
+      // Check if there are saved plot IDs in cookies and restore them
       const savedPlotIds = getCookie('selectedPlotIds');
       if (savedPlotIds) {
         try {
           const parsed = JSON.parse(savedPlotIds);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            console.log('Found saved plot IDs in cookies, will refresh plots data:', parsed);
+            console.log('Found saved plot IDs in cookies, restoring:', parsed);
+            setSelectedPlotIds(parsed);
             // The useEffect for selectedPlotIds will handle the actual API call
           }
         } catch (error) {
@@ -433,18 +437,28 @@ export default function ProjectsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Projects Management</h1>
-            <p className="mt-2 text-muted-foreground">Manage and monitor your renewable energy projects with advanced filtering</p>
+              <p className="mt-2 text-muted-foreground">Manage and monitor your renewable energy projects with advanced filtering</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setSidebarOpen(true)}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                </svg>
+                Filters & Plot Selection
+              </Button>
+              <Button
+                onClick={fetchAllProjects}
+                disabled={loading}
+                variant="outline"
+              >
+                {loading ? 'Loading...' : 'Refresh Projects'}
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={fetchAllProjects}
-              disabled={loading}
-              variant="outline"
-            >
-              {loading ? 'Loading...' : 'Refresh Projects'}
-            </Button>
-          </div>
-        </div>
 
         {/* Status notification for cookie-loaded plots */}
         {selectedPlotIds.length > 0 && (
@@ -465,205 +479,7 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {/* Filtering Controls */}
-        <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
-          <h2 className="text-lg font-medium text-foreground mb-4">Filters</h2>
-          
-          <div className="grid gap-4 md:grid-cols-3">
-            {/* Partner Dropdown */}
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Project Partner
-              </label>
-              <select
-                value={selectedPartner}
-                onChange={(e) => handlePartnerFilter(e.target.value)}
-                className="w-full p-2 border border-border rounded-md bg-background text-foreground"
-              >
-                <option value="">All Partners</option>
-                {projectPartners.map((partner) => (
-                  <option key={partner} value={partner}>
-                    {partner}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Search Input */}
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Search Projects
-              </label>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by name, country, partner..."
-                className="w-full p-2 border border-border rounded-md bg-background text-foreground"
-              />
-            </div>
-
-            {/* Clear Filters */}
-            <div className="flex items-end">
-              <Button
-                onClick={clearFilters}
-                variant="outline"
-                className="w-full"
-              >
-                Clear Filters
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Projects Display Section */}
-        <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-medium text-foreground">Plots Selection</h2>
-            <div className="flex items-center gap-4">
-              {selectedPlotIds.length > 0 && (
-                <Button onClick={clearPlotSelection} variant="outline" size="sm">
-                  Clear Selection ({selectedPlotIds.length})
-                </Button>
-              )}
-              <div className="text-sm text-muted-foreground">
-                {!loading && filteredProjects.length > 0 && (
-                  <>
-                    Showing {filteredProjects.length} of {allProjects.length} projects
-                    {selectedPartner && ` • Partner: ${selectedPartner}`}
-                    {searchTerm && ` • Search: "${searchTerm}"`}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          {loading && (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <span className="ml-2 text-muted-foreground">Fetching projects...</span>
-            </div>
-          )}
-
-          {error && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-1 mb-4">
-              <h3 className="text-destructive font-medium mb-2">Error Loading Projects</h3>
-              <p className="text-destructive/80 text-sm">{error}</p>
-              <Button 
-                onClick={fetchAllProjects} 
-                variant="outline" 
-                size="sm" 
-                className="mt-2"
-              >
-                Try Again
-              </Button>
-            </div>
-          )}
-
-          {!loading && !error && filteredProjects.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No projects found for current filters</p>
-              <Button 
-                onClick={clearFilters}
-                variant="outline"
-                size="sm"
-                className="mt-2"
-              >
-                Clear All Filters
-              </Button>
-            </div>
-          )}
-
-          {!loading && filteredProjects.length > 0 && (
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              {filteredProjects.map((project: ProjectData) => (
-                <div 
-                  key={project.Id}
-                  className="bg-muted/50 rounded-lg border border-border hover:shadow-md transition-all p-1"
-                >
-                  {/* Project Header */}
-                  <div className="border-b border-border/50">
-                    <div className="flex items-center gap-4 flex-wrap">
-
-                      
-                      {/* Project ID */}
-                      {project.P_PlotID && project.P_PlotID.length > 0 && (() => {
-                        const projectIds = [...new Set(project.P_PlotID.map(plot => plot.project_id).filter(Boolean))];
-                        return projectIds.length > 0 && (
-                          <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full border border-green-200 dark:bg-green-900 dark:text-green-200">
-                            {projectIds[0]}
-                          </span>
-                        );
-                      })()}
-                      
-                      {/* Project Name */}
-                      <div className="font-medium text-foreground text-base">
-                        {project['Project Name']}
-                      </div>
-                      
-                      {/* Country Badge */}
-                      {project.Country && (
-                        <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
-                          {project.Country}
-                        </span>
-                      )}
-                      
-                      {/* Power Availability */}
-                      {(project['Power Availability (Min)'] || project['Power Availability (Max)']) && (
-                        <div className="text-sm text-muted-foreground">
-                          <span className="font-medium">Power:</span> {project['Power Availability (Min)']} - {project['Power Availability (Max)']} MW
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Plots Section */}
-                  {project.P_PlotID && project.P_PlotID.length > 0 && (
-                    <div>
-                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {project.P_PlotID.map((plot, index) => (
-                          <div 
-                            key={index}
-                            className="bg-background/60 rounded-md p-2 border border-border/30"
-                          >
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {/* Site ID Bubble */}
-                              {plot.site_id && (
-                                <input
-                                  type="checkbox"
-                                  checked={selectedPlotIds.includes(plot.site_id)}
-                                  onChange={(e) => handlePlotSelection(plot.site_id, e.target.checked)}
-                                  className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-primary"
-                                />
-                              )}
-                              {plot.site_id && (
-                                <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full border border-blue-200 dark:bg-blue-900 dark:text-blue-200">
-                                  {plot.site_id}
-                                </span>
-                              )}
-                              
-                              {/* Plot Name */}
-                              <span className="text-xs text-foreground font-medium">
-                                {plot.plot_name}
-                              </span>
-                            </div>
-                            
-                            {/* Project Name (if different from main project) */}
-                            {plot.project_name && plot.project_name !== project['Project Name'] && (
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {plot.project_name}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Filtering Controls moved to slide-in sidebar */}
 
         {/* Plots Results Section */}
         {selectedPlotIds.length > 0 && (
@@ -700,29 +516,13 @@ export default function ProjectsPage() {
 
             {!plotsLoading && plotsData && (
               <div className="space-y-6">
-                {/* Debug Information */}
-                {plotsData.debug && (
-                  <div className="bg-muted/20 rounded-lg p-3 border border-border/30">
-                    <h4 className="text-sm font-medium text-foreground mb-2">Debug Info - {plotsData.debug.data_source_priority}</h4>
-                    <div className="grid gap-1 text-xs text-muted-foreground">
-                      <div>Schema fields mapped: {plotsData.schema_fields_mapped}</div>
-                      <div>Total schema records: {plotsData.debug.total_schema_records}</div>
-                      <div>Total schema fields: {plotsData.debug.total_schema_fields}</div>
-                      <div>Plot fields in data: {plotsData.debug.missing_fields_analysis?.plot_fields_in_data || 0}</div>
-                      <div>Project fields in data: {plotsData.debug.missing_fields_analysis?.project_fields_in_data || 0}</div>
-                      <div>Schema plots fields: {plotsData.debug.schema_fields_by_table?.plots?.length || 0}</div>
-                      <div>Schema projects fields: {plotsData.debug.schema_fields_by_table?.projects?.length || 0}</div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Plots Data with Schema Layout */}
                 {plotsData.plots.length > 0 && (
                   <div>
                     <h3 className="text-md font-medium text-foreground mb-3">Land Plots Data</h3>
-                    <div className="space-y-4">
+                    <div className="flex gap-4 overflow-x-auto pb-4">
                       {plotsData.plots.map((plot) => (
-                        <div key={plot.id} className="bg-muted/30 rounded-lg p-4 border border-border/50">
+                        <div key={plot.id} className="bg-muted/30 rounded-lg p-4 border border-border/50 min-w-96 flex-shrink-0">
                           {/* Plot Header */}
                           <div className="font-medium text-lg text-foreground mb-3 border-b border-border/20 pb-2">
                             Plot: {plot.plot_id || plot.id}
@@ -855,6 +655,13 @@ export default function ProjectsPage() {
                                       field["Field Name"]?.toLowerCase().includes(dataField.toLowerCase())
                                     )
                                   )
+                                  .sort((a, b) => {
+                                    // Sort by Field Order from schema (ascending)
+                                    const orderA = a["Field Order"] || 9999;
+                                    const orderB = b["Field Order"] || 9999;
+                                    console.log(`Sorting field ${a["Field Name"]} (order: ${orderA}) vs ${b["Field Name"]} (order: ${orderB})`);
+                                    return orderA - orderB;
+                                  })
                                   .map((field, idx) => {
                                     const fieldValue = findMatchingValue(field["Field Name"]);
                                     return (
@@ -955,6 +762,214 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+      {/* Slide-in Sidebar */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setSidebarOpen(false)}
+          />
+          
+          {/* Sidebar */}
+          <div className="absolute right-0 top-0 h-full w-96 bg-background border-l border-border shadow-xl overflow-y-auto">
+            {/* Sidebar Header */}
+            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">Filters & Plot Selection</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSidebarOpen(false)}
+                className="h-8 w-8 p-0"
+              >
+                ✕
+              </Button>
+            </div>
+
+            {/* Sidebar Content */}
+            <div className="p-4 space-y-6">
+              {/* Filtering Controls */}
+              <div>
+                <h3 className="text-md font-medium text-foreground mb-4">Filters</h3>
+                <div className="space-y-4">
+                  {/* Total Projects Display */}
+                  <div className="text-sm text-muted-foreground">
+                    {allProjects.length > 0 && (
+                      <>Total: {allProjects.length} projects</>
+                    )}
+                  </div>
+
+                  {/* Partner Dropdown */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Project Partner
+                    </label>
+                    <select
+                      value={selectedPartner}
+                      onChange={(e) => handlePartnerFilter(e.target.value)}
+                      className="w-full p-2 border border-border rounded-md bg-background text-foreground"
+                    >
+                      <option value="">All Partners</option>
+                      {projectPartners.map((partner) => (
+                        <option key={partner} value={partner}>
+                          {partner}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Search Input */}
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Search Projects
+                    </label>
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Search by name, country, partner..."
+                      className="w-full p-2 border border-border rounded-md bg-background text-foreground"
+                    />
+                  </div>
+
+                  {/* Clear Filters */}
+                  <Button
+                    onClick={clearFilters}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+
+              {/* Plot Selection Section */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-md font-medium text-foreground">Plot Selection</h3>
+                  {selectedPlotIds.length > 0 && (
+                    <Button onClick={clearPlotSelection} variant="outline" size="sm">
+                      Clear ({selectedPlotIds.length})
+                    </Button>
+                  )}
+                </div>
+
+                <div className="text-sm text-muted-foreground mb-4">
+                  {!loading && filteredProjects.length > 0 && (
+                    <>
+                      Showing {filteredProjects.length} of {allProjects.length} projects
+                      {selectedPartner && ` • Partner: ${selectedPartner}`}
+                      {searchTerm && ` • Search: "${searchTerm}"`}
+                    </>
+                  )}
+                </div>
+
+                {loading && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    <span className="ml-2 text-muted-foreground text-sm">Loading...</span>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 mb-4">
+                    <h4 className="text-destructive font-medium mb-1 text-sm">Error Loading Projects</h4>
+                    <p className="text-destructive/80 text-xs">{error}</p>
+                    <Button 
+                      onClick={fetchAllProjects} 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2"
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                )}
+
+                {!loading && !error && filteredProjects.length === 0 && (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <p className="text-sm">No projects found</p>
+                    <Button 
+                      onClick={clearFilters}
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                    >
+                      Clear All Filters
+                    </Button>
+                  </div>
+                )}
+
+                {/* Projects List for Selection */}
+                {!loading && filteredProjects.length > 0 && (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {filteredProjects.map((project: ProjectData) => (
+                      <div 
+                        key={project.Id}
+                        className="bg-muted/30 rounded-lg border border-border p-3"
+                      >
+                        {/* Project Header */}
+                        <div className="mb-2">
+                          <div className="flex items-center gap-2 flex-wrap text-sm">
+                            {/* Project ID */}
+                            {project.P_PlotID && project.P_PlotID.length > 0 && (() => {
+                              const projectIds = [...new Set(project.P_PlotID.map(plot => plot.project_id).filter(Boolean))];
+                              return projectIds.length > 0 && (
+                                <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full border border-green-200 dark:bg-green-900 dark:text-green-200">
+                                  {projectIds[0]}
+                                </span>
+                              );
+                            })()}
+                            
+                            {/* Country Badge */}
+                            {project.Country && (
+                              <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
+                                {project.Country}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="font-medium text-foreground text-sm mt-1">
+                            {project['Project Name']}
+                          </div>
+                        </div>
+                        
+                        {/* Plots */}
+                        {project.P_PlotID && project.P_PlotID.length > 0 && (
+                          <div className="space-y-2">
+                            {project.P_PlotID.map((plot, index) => (
+                              <div 
+                                key={index}
+                                className="bg-background/60 rounded-md p-2 border border-border/30"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedPlotIds.includes(plot.site_id)}
+                                    onChange={(e) => handlePlotSelection(plot.site_id, e.target.checked)}
+                                    className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-primary"
+                                  />
+                                  <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200">
+                                    {plot.site_id}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {plot.plot_name}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </DashboardLayout>
   );
 }

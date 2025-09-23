@@ -459,7 +459,7 @@ async def options_handler(full_path: str):
 @app.get("/projects/schema", tags=["Projects"])
 def get_schema_data(current_user: dict = Depends(get_current_user)):
     """Get schema data from NocoDB schema table"""
-    print("SCHEMA ENDPOINT CALLED - Starting to process schema data")
+    print("SCHEMA ENDPOINT CALLED - Starting to process schema data with dynamic ordering")
     try:
         # Get user-specific NocoDB token, fallback to environment token
         user_token = None
@@ -612,32 +612,62 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
             options.sort(key=lambda x: x["order"])
             return options
         
-        # Collect dropdown options for Category and Subcategory fields
+        # First pass: collect dropdown options for Category and Subcategory fields
         category_options = []
         subcategory_options = []
         
-        processed_records = []
         for record in schema_records:
-            # Check if this is a Category or Subcategory field definition
             field_name = record.get("Field Name", "")
             field_type = record.get("Type", "")
             options_raw = record.get("Options", "")
             
             if field_name == "Category" and field_type == "SingleSelect":
                 category_options = parse_select_options(options_raw)
+                print(f"🏷️ Found Category options: {category_options}")
             elif field_name == "Subcategory" and field_type == "SingleSelect":
                 subcategory_options = parse_select_options(options_raw)
+                print(f"🏷️ Found Subcategory options: {subcategory_options}")
+        
+        # Helper function to get order from options
+        def get_option_order(value, options_list):
+            """Get the order number for a given value from the options list"""
+            print(f"🔍 get_option_order called with value='{value}', options_list has {len(options_list) if options_list else 0} items")
+            if not value or not options_list:
+                print(f"🔍 Returning 999 because value='{value}' or options_list is empty")
+                return 999
+            for option in options_list:
+                option_value = option.get("value", "")
+                print(f"🔍 Comparing '{value.lower()}' with '{option_value.lower()}'")
+                if option_value.lower() == value.lower():
+                    order = option.get("order", 999)
+                    print(f"✅ Found match! Returning order {order}")
+                    return order
+            print(f"❌ No match found for '{value}', returning 999")
+            return 999
+        
+        # Second pass: process records with proper category and subcategory ordering
+        processed_records = []
+        for record in schema_records:
+            # Get category and subcategory values
+            category_value = record.get("Category", "")
+            subcategory_value = record.get("Subcategory", "")
             
-            # Map the NocoDB fields to frontend expected format - including category_order and subcategory_order
+            # Look up the order from the options
+            category_order = get_option_order(category_value, category_options)
+            subcategory_order = get_option_order(subcategory_value, subcategory_options)
+            
+            print(f"📋 Processing field '{record.get('Field Name')}': Category='{category_value}' (order: {category_order}), Subcategory='{subcategory_value}' (order: {subcategory_order})")
+            
+            # Map the NocoDB fields to frontend expected format - with dynamic category_order and subcategory_order
             processed_record = {
                 "id": record.get("id"),
                 "Field Name": record.get("Field Name", ""),
                 "Description": record.get("Description", ""),
                 "Field Order": record.get("Field Order", 999),
-                "Category": record.get("Category", ""),
-                "Subcategory": record.get("Subcategory", ""),
-                "category_order": record.get("category_order", 999),
-                "subcategory_order": record.get("subcategory_order", 999),
+                "Category": category_value,
+                "Subcategory": subcategory_value,
+                "category_order": category_order,
+                "subcategory_order": subcategory_order,
                 "Type": record.get("Type", ""),
                 "Field ID": record.get("Field ID", ""),
                 "Table": record.get("Table", ""),
