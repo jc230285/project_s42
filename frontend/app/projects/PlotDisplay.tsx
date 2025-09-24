@@ -235,22 +235,25 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   return (
     <>
       <div 
-        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors"
+        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors overflow-hidden"
         style={{ minHeight: `${calculatedHeight}px` }}
         data-field-id={field["Field ID"]}
         data-field-type={field.Type}
         onClick={() => setIsModalOpen(true)}
       >
         {/* Field name - top */}
-        <div className="text-sm font-medium text-foreground mb-2">
+        <div className="text-sm font-medium text-foreground mb-2 break-words">
           {field["Field Name"]}
         </div>
         
         {/* Rich text preview - below field name */}
         <div className="text-xs text-muted-foreground">
           {fieldValue ? (
-            <div className="prose prose-sm max-w-none">
-              <div dangerouslySetInnerHTML={{ __html: fieldValue }} />
+            <div className="prose prose-sm max-w-none prose-invert break-words">
+              <div 
+                className="break-words whitespace-pre-wrap overflow-hidden" 
+                dangerouslySetInnerHTML={{ __html: fieldValue }} 
+              />
             </div>
           ) : (
             <span className="italic">Click to add content...</span>
@@ -260,16 +263,16 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
 
       {/* Rich Text Editor Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background border border-border rounded-lg shadow-lg max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <h3 className="text-lg font-semibold">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-t-lg">
+              <h3 className="text-lg font-semibold text-white">
                 Edit {field["Field Name"]}
               </h3>
               <button
                 onClick={handleCancel}
-                className="text-muted-foreground hover:text-foreground"
+                className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -279,28 +282,28 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 p-4 overflow-hidden">
+            <div className="flex-1 p-4 overflow-hidden bg-gray-900 dark:bg-gray-800">
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="w-full h-full min-h-[400px] p-3 border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full h-full min-h-[400px] p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
                 placeholder="Enter rich text content (HTML supported)..."
                 disabled={isSaving}
               />
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-2 p-4 border-t border-border">
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-b-lg">
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent/50 transition-colors"
+                className="px-4 py-2 text-sm border border-gray-600 text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
                 disabled={isSaving}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className={`px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors ${
+                className={`px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${
                   isSaving ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
                 disabled={isSaving}
