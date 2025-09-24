@@ -12,7 +12,8 @@ export async function PUT(request: NextRequest) {
     const { table_id, row_id, field_data } = body;
 
     // Forward the request to the backend
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8150';
+    // Use Docker internal network URL when in container, fallback to localhost for development
+    const backendUrl = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
     
     const response = await fetch(`${backendUrl}/nocodb/update-row`, {
       method: 'PUT',

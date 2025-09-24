@@ -156,7 +156,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={handleKeyDown}
               onBlur={handleSave}
-              className="text-sm border border-border rounded px-2 py-1 min-w-[80px] text-right"
+              className="text-sm border border-gray-600 rounded px-2 py-1 min-w-[80px] text-right bg-gray-800 text-white focus:border-gray-500 focus:outline-none"
               autoFocus
               disabled={isSaving}
             />
