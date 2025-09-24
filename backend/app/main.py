@@ -255,6 +255,10 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
         
         token = authorization[7:]  # Remove "Bearer "
         
+        # Allow internal authentication for auth flow
+        if token == "internal-auth-check":
+            return {"email": "internal", "authenticated": True}
+        
         # For now, we'll accept any valid-looking token as authenticated
         # In production, you'd validate this against your auth provider
         if len(token) < 10:  # Basic validation
@@ -1561,3 +1565,141 @@ async def get_nocodb_table_info(table_id: str, current_user: dict = Depends(get_
 def get_map_stats_placeholder():
     """Get map statistics - placeholder endpoint"""
     return {"placeholder": "to be implemented"}
+
+@app.get("/user-info/{email}", tags=["User Management"])
+def get_user_info(email: str, current_user: dict = Depends(get_current_user)):
+    """Get user information with group details"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Create tables if they don't exist
+        create_users_table(cursor)
+        create_groups_table(cursor)
+        
+        # Get user with group information
+        query = """
+        SELECT u.*, g.name as group_name, g.domain as group_domain
+        FROM users u
+        LEFT JOIN groups g ON u.group_id = g.id
+        WHERE u.email = %s
+        """
+        cursor.execute(query, (email,))
+        user_info = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        if user_info:
+            return user_info
+        else:
+            return None
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/create-user", tags=["User Management"])
+def create_user(user_data: dict, current_user: dict = Depends(get_current_user)):
+    """Create a new user and assign to group based on email domain"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Create tables if they don't exist
+        create_users_table(cursor)
+        create_groups_table(cursor)
+        
+        email = user_data.get('email')
+        name = user_data.get('name', '')
+        
+        if not email:
+            return {"error": "Email is required"}
+            
+        # Extract domain from email
+        domain = email.split('@')[1] if '@' in email else None
+        
+        # Find or create group based on domain
+        group_id = None
+        if domain:
+            # Check for existing group with this domain
+            cursor.execute("SELECT * FROM groups WHERE domain = %s", (domain,))
+            group = cursor.fetchone()
+            
+            if not group:
+                # For Scale42 domains, try to find existing Scale42 group first
+                if domain in ['scale42.no', 'scale-42.com']:
+                    cursor.execute("SELECT * FROM groups WHERE name = 'Scale42'")
+                    existing_scale42 = cursor.fetchone()
+                    if existing_scale42:
+                        group_id = existing_scale42['id']
+                    else:
+                        # Create new Scale42 group
+                        cursor.execute(
+                            "INSERT INTO groups (name, domain, created_at) VALUES (%s, %s, NOW())",
+                            ('Scale42', domain)
+                        )
+                        group_id = cursor.lastrowid
+                else:
+                    # Create new group for other domains
+                    group_name = domain.split('.')[0]
+                    cursor.execute(
+                        "INSERT INTO groups (name, domain, created_at) VALUES (%s, %s, NOW())",
+                        (group_name, domain)
+                    )
+                    group_id = cursor.lastrowid
+            else:
+                group_id = group['id']
+        
+        # Create user
+        cursor.execute(
+            """INSERT INTO users (email, name, group_id, created_at, last_login) 
+               VALUES (%s, %s, %s, NOW(), NOW())""",
+            (email, name, group_id)
+        )
+        user_id = cursor.lastrowid
+        
+        # Get the created user with group info
+        cursor.execute("""
+            SELECT u.*, g.name as group_name, g.domain as group_domain
+            FROM users u
+            LEFT JOIN groups g ON u.group_id = g.id
+            WHERE u.id = %s
+        """, (user_id,))
+        
+        new_user = cursor.fetchone()
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return new_user
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/update-user-login", tags=["User Management"])
+def update_user_login(user_data: dict, current_user: dict = Depends(get_current_user)):
+    """Update user's last login timestamp"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        create_users_table(cursor)
+        
+        email = user_data.get('email')
+        if not email:
+            return {"error": "Email is required"}
+        
+        cursor.execute(
+            "UPDATE users SET last_login = NOW() WHERE email = %s",
+            (email,)
+        )
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {"success": True}
+        
+    except Exception as e:
+        return {"error": str(e)}

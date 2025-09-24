@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Loader } from "@googlemaps/js-api-loader";
 import DashboardLayout from '@/components/DashboardLayout';
+import { WithScale42Access } from '@/components/WithScale42Access';
 
 declare global {
   interface Window {
@@ -290,6 +291,14 @@ const useGoogleMaps = (sites: Site[], googleMapsLoaded: boolean, layerToggles: a
 };
 
 export default function MapPage() {
+  return (
+    // <WithScale42Access>
+      <MapPageContent />
+    // </WithScale42Access>
+  );
+}
+
+function MapPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [mapData, setMapData] = useState<MapData | null>(null);

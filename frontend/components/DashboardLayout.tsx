@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
+import { hasScale42Access } from '@/lib/auth-utils';
 
 function DashboardLayout({ children, initialSidebarCollapsed = false }: { children: React.ReactNode, initialSidebarCollapsed?: boolean }) {
   const pathname = usePathname();
@@ -143,6 +144,9 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
     }
   }, [session]);
 
+  // Check if user has Scale42 access
+  const hasScale42 = hasScale42Access(session);
+
   const menuSections = [
     {
       title: 'Dashboard',
@@ -150,26 +154,29 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
         { href: '/', icon: Home, label: 'Home' },
       ]
     },
-        {
+    // Only show Projects section for Scale42 users
+    ...(hasScale42 ? [{
       title: 'Projects',
       items: [
         { href: '/projects', icon: FolderOpen, label: 'Projects' },
         { href: '/map', icon: Map, label: 'Map' },
         { href: '/schema', icon: Database, label: 'Schema' },
       ]
-    },
-    {
+    }] : []),
+    // Only show Hoyanger Power section for Scale42 users
+    ...(hasScale42 ? [{
       title: 'Hoyanger Power',
       items: [
         { href: '/hoyanger', icon: Zap, label: 'Overview' },
       ]
-    },
-    {
+    }] : []),
+    // Only show Account Management section for Scale42 users
+    ...(hasScale42 ? [{
       title: 'Account Management',
       items: [
         { href: '/accounts', icon: CreditCard, label: 'Accounts' },
       ]
-    },
+    }] : []),
     {
       title: 'Tools',
       items: [
@@ -182,14 +189,15 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
     {
       title: 'Settings',
       items: [
-        { href: '/users', icon: Users, label: 'Users' },
+        // Only show Users for Scale42 users
+        ...(hasScale42 ? [{ href: '/users', icon: Users, label: 'Users' }] : []),
         ...(session 
           ? [{ href: '#', icon: LogOut, label: 'Logout', action: 'signout' }]
           : [{ href: '/login', icon: LogIn, label: 'Login' }]
         ),
       ]
     }
-  ];
+  ].filter(section => section.items.length > 0); // Remove empty sections
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -235,16 +243,23 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
               {section.items.map((item) => {
                 if (item.action === 'signout') {
                   return (
-                    <Button
-                      key="signout"
-                      variant="ghost"
-                      className={`w-full justify-start mb-2 text-destructive hover:text-destructive hover:bg-destructive/10 ${!isSidebarOpen ? 'px-2' : ''}`}
-                      onClick={handleSignOut}
-                      title={!isSidebarOpen ? item.label : undefined}
-                    >
-                      <item.icon className="h-5 w-5" />
-                      {isSidebarOpen && <span className="ml-3">{item.label}</span>}
-                    </Button>
+                    <div key="signout-section">
+                      {/* User Email Display */}
+                      {session?.user?.email && isSidebarOpen && (
+                        <div className="px-2 py-1 mb-2 text-xs text-muted-foreground truncate">
+                          {session.user.email}
+                        </div>
+                      )}
+                      <Button
+                        variant="ghost"
+                        className={`w-full justify-start mb-2 text-destructive hover:text-destructive hover:bg-destructive/10 ${!isSidebarOpen ? 'px-2' : ''}`}
+                        onClick={handleSignOut}
+                        title={!isSidebarOpen ? item.label : undefined}
+                      >
+                        <item.icon className="h-5 w-5" />
+                        {isSidebarOpen && <span className="ml-3">{item.label}</span>}
+                      </Button>
+                    </div>
                   );
                 }
                 

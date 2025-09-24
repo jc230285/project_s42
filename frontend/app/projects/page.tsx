@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { PlotDisplay } from './PlotDisplay';
+import { WithScale42Access } from '@/components/WithScale42Access';
 
 interface PlotData {
   raw: string;
@@ -98,6 +99,14 @@ interface PlotsResponse {
 }
 
 export default function ProjectsPage() {
+  return (
+    // <WithScale42Access>
+      <ProjectsPageContent />
+    // </WithScale42Access>
+  );
+}
+
+function ProjectsPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [allProjects, setAllProjects] = useState<ProjectData[]>([]);

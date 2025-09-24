@@ -3,8 +3,17 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
+import { WithScale42Access } from '@/components/WithScale42Access';
 
 export default function HoyangerPage() {
+  return (
+    // <WithScale42Access>
+      <HoyangerPageContent />
+    // </WithScale42Access>
+  );
+}
+
+function HoyangerPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
 

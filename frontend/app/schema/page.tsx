@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import DashboardLayout from '@/components/DashboardLayout'
 import { Button } from '@/components/ui/button'
+import { WithScale42Access } from '@/components/WithScale42Access'
 
 interface EditingField {
   recordId: string
@@ -14,6 +15,14 @@ interface EditingField {
 }
 
 export default function SchemaPage() {
+  return (
+    // <WithScale42Access>
+      <SchemaPageContent />
+    // </WithScale42Access>
+  );
+}
+
+function SchemaPageContent() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [schemaTableData, setSchemaTableData] = useState<any>(null)

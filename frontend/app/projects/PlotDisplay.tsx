@@ -544,7 +544,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
   }, [allFieldsWithSource.length, plot.id]); // Re-run when fields or plot changes
 
   return (
-    <div ref={containerRef} className="bg-muted/30 rounded-lg p-4 border border-border/50 min-w-96 flex-shrink-0">
+    <div ref={containerRef} className="bg-muted/30 rounded-lg p-4 border border-border/50 min-w-96 max-w-[600px] flex-shrink-0">
       {/* Plot Header */}
       <div className="mb-3 border-b border-border/20 pb-2">
         <div className="flex items-center gap-2 flex-wrap">

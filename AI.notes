@@ -1,7 +1,0 @@
-make sure in the local testing we allways run the front end on 3150 and the backend on 8150 this runs in docker clear all contianers using these ports and windows servises on these ports and rebuild whne needed then push to github
-
-in production we use front https://s42.edbmotte.com and back =https://s42api.edbmotte.com and deploy this through coolify (Dcoker) and githib
-
-we allways use the production sql database and NOCODB api
-
-the backend is fast API

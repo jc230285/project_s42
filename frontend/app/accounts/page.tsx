@@ -3,8 +3,17 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
+import { WithScale42Access } from '@/components/WithScale42Access';
 
 export default function AccountsPage() {
+  return (
+    // <WithScale42Access>
+      <AccountsPageContent />
+    // </WithScale42Access>
+  );
+}
+
+function AccountsPageContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
