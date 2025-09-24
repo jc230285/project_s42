@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3150",
+    "dev": "next dev -p 3150 -H 0.0.0.0",
     "build": "prisma generate && next build",
     "start": "next start",
     "db:push": "prisma db push",
