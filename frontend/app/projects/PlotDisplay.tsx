@@ -287,8 +287,12 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   return (
     <>
       <div 
-        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors overflow-hidden"
-        style={{ minHeight: `${calculatedHeight}px` }}
+        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors overflow-hidden break-words"
+        style={{ 
+          minHeight: `${calculatedHeight}px`,
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere'
+        }}
         data-field-id={field["Field ID"]}
         data-field-type={field.Type}
         onClick={() => setIsModalOpen(true)}
@@ -301,9 +305,14 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
         {/* Rich text preview - below field name */}
         <div className="text-xs text-muted-foreground">
           {fieldValue ? (
-            <div className="prose prose-sm max-w-none prose-invert break-words">
+            <div className="prose prose-sm max-w-none prose-invert">
               <div 
-                className="break-words whitespace-pre-wrap overflow-hidden" 
+                className="break-words overflow-wrap-anywhere hyphens-auto leading-relaxed text-wrap overflow-hidden max-h-32"
+                style={{ 
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                  whiteSpace: 'normal'
+                }}
                 dangerouslySetInnerHTML={{ __html: fieldValue }} 
               />
             </div>
