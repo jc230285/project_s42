@@ -41,6 +41,11 @@ interface PlotDisplayProps {
   };
   schema: SchemaField[];
   fieldHeights?: { [fieldId: string]: number };
+  // Shared collapse state props
+  collapsedCategories: Set<string>;
+  collapsedSubcategories: Set<string>;
+  onToggleCategory: (category: string) => void;
+  onToggleSubcategory: (key: string) => void;
 }
 
 // SingleLineTextField Component
@@ -435,70 +440,17 @@ const SubcategoryHeader: React.FC<SubcategoryHeaderProps> = ({
   </div>
 );
 
-export const PlotDisplay: React.FC<PlotDisplayProps> = ({ plot, parentProject, schema, fieldHeights = {} }) => {
+export const PlotDisplay: React.FC<PlotDisplayProps> = ({ 
+  plot, 
+  parentProject, 
+  schema, 
+  fieldHeights = {},
+  collapsedCategories,
+  collapsedSubcategories,
+  onToggleCategory,
+  onToggleSubcategory
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // State for collapsed categories and subcategories
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-  const [collapsedSubcategories, setCollapsedSubcategories] = useState<Set<string>>(new Set());
-
-  // Load collapsed state from cookies on mount
-  useEffect(() => {
-    const savedCategories = getCookieValue('collapsed-categories');
-    const savedSubcategories = getCookieValue('collapsed-subcategories');
-    
-    if (savedCategories) {
-      try {
-        const parsed = JSON.parse(savedCategories);
-        setCollapsedCategories(new Set(parsed));
-      } catch (e) {
-        console.warn('Failed to parse collapsed categories from cookie');
-      }
-    }
-    
-    if (savedSubcategories) {
-      try {
-        const parsed = JSON.parse(savedSubcategories);
-        setCollapsedSubcategories(new Set(parsed));
-      } catch (e) {
-        console.warn('Failed to parse collapsed subcategories from cookie');
-      }
-    }
-  }, []);
-
-  // Save collapsed state to cookies whenever it changes
-  useEffect(() => {
-    setCookieValue('collapsed-categories', JSON.stringify([...collapsedCategories]));
-  }, [collapsedCategories]);
-
-  useEffect(() => {
-    setCookieValue('collapsed-subcategories', JSON.stringify([...collapsedSubcategories]));
-  }, [collapsedSubcategories]);
-
-  // Toggle functions
-  const toggleCategory = (category: string) => {
-    setCollapsedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(category)) {
-        newSet.delete(category);
-      } else {
-        newSet.add(category);
-      }
-      return newSet;
-    });
-  };
-
-  const toggleSubcategory = (subcategoryKey: string) => {
-    setCollapsedSubcategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(subcategoryKey)) {
-        newSet.delete(subcategoryKey);
-      } else {
-        newSet.add(subcategoryKey);
-      }
-      return newSet;
-    });
-  };
 
   // Combine and sort all fields by category order - both plot and project fields together
   const plotFields = schema.filter(field => field.Table === "Land Plots, Sites");
@@ -627,7 +579,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({ plot, parentProject, s
                 <CategoryHeader
                   category={category}
                   isCollapsed={isCategoryCollapsed}
-                  onToggle={() => toggleCategory(category)}
+                  onToggle={() => onToggleCategory(category)}
                   categoryOrder={categoryOrder}
                 />
                 
@@ -649,7 +601,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({ plot, parentProject, s
                               subcategory={subcategory}
                               category={category}
                               isCollapsed={isSubcategoryCollapsed}
-                              onToggle={() => toggleSubcategory(subcategoryKey)}
+                              onToggle={() => onToggleSubcategory(subcategoryKey)}
                               subcategoryOrder={subcategoryOrder}
                             />
                             

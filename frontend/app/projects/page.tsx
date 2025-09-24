@@ -201,6 +201,31 @@ export default function ProjectsPage() {
     setCookie('collapsed-subcategories', JSON.stringify([...collapsedSubcategories]));
   }, [collapsedSubcategories]);
 
+  // Toggle functions for shared collapse state
+  const handleToggleCategory = (category: string) => {
+    setCollapsedCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(category)) {
+        newSet.delete(category);
+      } else {
+        newSet.add(category);
+      }
+      return newSet;
+    });
+  };
+
+  const handleToggleSubcategory = (subcategoryKey: string) => {
+    setCollapsedSubcategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(subcategoryKey)) {
+        newSet.delete(subcategoryKey);
+      } else {
+        newSet.add(subcategoryKey);
+      }
+      return newSet;
+    });
+  };
+
   useEffect(() => {
     if (status !== "loading" && !session) {
       router.push('/');
@@ -617,6 +642,10 @@ export default function ProjectsPage() {
                               parentProject={parentProject}
                               schema={schemaData || []}
                               fieldHeights={fieldHeights}
+                              collapsedCategories={collapsedCategories}
+                              collapsedSubcategories={collapsedSubcategories}
+                              onToggleCategory={handleToggleCategory}
+                              onToggleSubcategory={handleToggleSubcategory}
                             />
                           );
                         });
