@@ -117,6 +117,10 @@ export default function ProjectsPage() {
   
   const [error, setError] = useState<string | null>(null);
 
+  // Shared collapse state for all plots
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [collapsedSubcategories, setCollapsedSubcategories] = useState<Set<string>>(new Set());
+
   // Cookie utilities
   const setCookie = (name: string, value: string, days: number = 30) => {
     const expires = new Date();
@@ -159,6 +163,43 @@ export default function ProjectsPage() {
       console.log('Saved plot selections to cookies:', selectedPlotIds);
     }
   }, [selectedPlotIds]);
+
+  // Load collapse state from cookies on mount
+  useEffect(() => {
+    const savedCategories = getCookie('collapsed-categories');
+    const savedSubcategories = getCookie('collapsed-subcategories');
+    
+    if (savedCategories) {
+      try {
+        const parsed = JSON.parse(savedCategories);
+        if (Array.isArray(parsed)) {
+          setCollapsedCategories(new Set(parsed));
+        }
+      } catch (error) {
+        console.warn('Failed to parse collapsed categories from cookie');
+      }
+    }
+    
+    if (savedSubcategories) {
+      try {
+        const parsed = JSON.parse(savedSubcategories);
+        if (Array.isArray(parsed)) {
+          setCollapsedSubcategories(new Set(parsed));
+        }
+      } catch (error) {
+        console.warn('Failed to parse collapsed subcategories from cookie');
+      }
+    }
+  }, []);
+
+  // Save collapse state to cookies whenever it changes
+  useEffect(() => {
+    setCookie('collapsed-categories', JSON.stringify([...collapsedCategories]));
+  }, [collapsedCategories]);
+
+  useEffect(() => {
+    setCookie('collapsed-subcategories', JSON.stringify([...collapsedSubcategories]));
+  }, [collapsedSubcategories]);
 
   useEffect(() => {
     if (status !== "loading" && !session) {
