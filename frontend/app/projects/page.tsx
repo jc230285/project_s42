@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { PlotDisplay } from './PlotDisplay';
 
 interface PlotData {
   raw: string;
@@ -252,7 +253,7 @@ export default function ProjectsPage() {
     }
   };
 
-  // Fetch plots data based on selected plot IDs - using backend endpoint
+  // Fetch plots data based on selected plot IDs - using consolidated backend endpoint
   const fetchPlotsData = async () => {
     if (selectedPlotIds.length === 0) {
       setPlotsData(null);
@@ -274,9 +275,56 @@ export default function ProjectsPage() {
       );
       
       if (response.ok) {
-        const data: PlotsResponse = await response.json();
-        console.log('Received plots data:', data);
-        setPlotsData(data);
+        const data = await response.json();
+        console.log('Received consolidated plots data:', data);
+        
+        // Set schema data from the response
+        if (data.schema) {
+          setSchemaData(data.schema);
+        }
+        
+        // Transform the new data structure to match expected format
+        const transformedData: PlotsResponse = {
+          plots: [], // Will be populated from projects.plots
+          projects: [], // Will be populated from data.projects
+          selected_plot_ids: selectedPlotIds,
+          plots_count: 0,
+          projects_count: data.data?.projects?.length || 0,
+          total_plots_available: 0,
+          total_projects_available: 0,
+          schema_fields_mapped: data.schema?.length || 0,
+          source: 'consolidated-endpoint'
+        };
+        
+        // Process projects and extract plots
+        if (data.data?.projects) {
+          data.data.projects.forEach((project: any) => {
+            // Add project to transformed data
+            transformedData.projects.push({
+              id: project._db_id,
+              project_name: project.values?.c5udjaiacvutwek || `Project ${project._db_id}`,
+              fields: [], // Will be populated if needed
+              basic_data: project.values
+            });
+            
+            // Add plots from this project
+            if (project.plots && Array.isArray(project.plots)) {
+              project.plots.forEach((plot: any) => {
+                transformedData.plots.push({
+                  id: plot._db_id,
+                  plot_id: `S${String(plot._db_id).padStart(3, '0')}`,
+                  fields: [], // Will be populated if needed
+                  basic_data: plot.values
+                });
+              });
+            }
+          });
+        }
+        
+        transformedData.plots_count = transformedData.plots.length;
+        transformedData.total_plots_available = transformedData.plots.length;
+        
+        setPlotsData(transformedData);
       } else {
         console.error('Error fetching plots data:', response.status);
         const errorText = await response.text();
@@ -479,241 +527,59 @@ export default function ProjectsPage() {
                 {plotsData.plots.length > 0 && (
                   <div>
                     <div className="flex gap-4 overflow-x-auto pb-4">
-                      {plotsData.plots.map((plot) => (
-                        <div key={plot.id} className="bg-muted/30 rounded-lg p-4 border border-border/50 min-w-96 flex-shrink-0">
-                          {/* Plot Header */}
-                          <div className="mb-3 border-b border-border/20 pb-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-900 dark:text-blue-200">
-                                S{String(plot.plot_id || plot.id).padStart(3, '0')}
-                              </span>
-                              {(() => {
-                                // Find associated project ID from plotsData.projects
-                                const associatedProject = plotsData.projects.find(project => 
-                                  project.basic_data && plot.basic_data && 
-                                  project.basic_data['Project Name'] && plot.basic_data['Project Name'] &&
-                                  project.basic_data['Project Name'] === plot.basic_data['Project Name']
-                                );
-                                const projectId = associatedProject?.basic_data?.Id || 
-                                                associatedProject?.basic_data?.id ||
-                                                associatedProject?.id;
-                                return projectId && (
-                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200 dark:bg-green-900 dark:text-green-200">
-                                    P{String(projectId).padStart(3, '0')}
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                          
-                          {/* Schema Fields with Inline Data Values */}
-                          <div className="bg-background/50 rounded-md p-3 border border-border/30">
+                      {(() => {
+                        // Pre-calculate field heights for alignment across plots
+                        const fieldHeights: { [fieldId: string]: number } = {};
+                        
+                        // Calculate content length for each field across all plots
+                        plotsData.plots.forEach((plot) => {
+                          const plotSchema = (schemaData || []).filter(field => field.Table === "Land Plots, Sites");
+                          plotSchema.forEach((field) => {
+                            const fieldId = field["Field ID"];
+                            const fieldValue = plot.basic_data?.[fieldId];
+                            const contentLength = fieldValue !== null && fieldValue !== undefined ? 
+                              (Array.isArray(fieldValue) ? fieldValue.join(', ').length : String(fieldValue).length) : 
+                              3; // "N/A" length
                             
-                            <div className="space-y-2">
-                              {(() => {
-                                // Get all field names that actually exist in this plot's data
-                                const plotFieldNames = plot.basic_data ? Object.keys(plot.basic_data) : [];
-                                const projectData = plotsData.projects.length > 0 && plotsData.projects[0].basic_data 
-                                  ? plotsData.projects[0].basic_data 
-                                  : {};
-                                const projectFieldNames = Object.keys(projectData);
-                                
-                                const allPresentFieldNames = [...plotFieldNames, ...projectFieldNames];
-                                
-                                // Helper function to find matching value in plot or project data
-                                const findMatchingValue = (fieldName: string) => {
-                                  console.log(`Looking for field: "${fieldName}"`);
-                                  
-                                  // Try exact match first in plot data
-                                  if (plot.basic_data && plot.basic_data[fieldName] !== undefined) {
-                                    console.log(`  Found exact match in plot data: ${plot.basic_data[fieldName]}`);
-                                    return plot.basic_data[fieldName];
-                                  }
-                                  
-                                  // Try exact match in project data
-                                  if (projectData[fieldName] !== undefined) {
-                                    console.log(`  Found exact match in project data: ${projectData[fieldName]}`);
-                                    return projectData[fieldName];
-                                  }
-                                  
-                                  // Try case-insensitive match in plot data
-                                  if (plot.basic_data) {
-                                    const plotKey = Object.keys(plot.basic_data).find(key => 
-                                      key.toLowerCase() === fieldName.toLowerCase()
-                                    );
-                                    if (plotKey) {
-                                      console.log(`  Found case-insensitive match in plot data: ${plotKey} = ${plot.basic_data[plotKey]}`);
-                                      return plot.basic_data[plotKey];
-                                    }
-                                  }
-                                  
-                                  // Try case-insensitive match in project data
-                                  const projectKey = Object.keys(projectData).find(key => 
-                                    key.toLowerCase() === fieldName.toLowerCase()
-                                  );
-                                  if (projectKey) {
-                                    console.log(`  Found case-insensitive match in project data: ${projectKey} = ${projectData[projectKey]}`);
-                                    return projectData[projectKey];
-                                  }
-                                  
-                                  // Try partial match in plot data (more flexible)
-                                  if (plot.basic_data) {
-                                    const plotKey = Object.keys(plot.basic_data).find(key => {
-                                      const keyLower = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                      const fieldLower = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                      return keyLower.includes(fieldLower) || fieldLower.includes(keyLower) ||
-                                             keyLower === fieldLower;
-                                    });
-                                    if (plotKey) {
-                                      console.log(`  Found flexible match in plot data: ${plotKey} = ${plot.basic_data[plotKey]}`);
-                                      return plot.basic_data[plotKey];
-                                    }
-                                  }
-                                  
-                                  // Try partial match in project data (more flexible)
-                                  const projectKeyPartial = Object.keys(projectData).find(key => {
-                                    const keyLower = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                    const fieldLower = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                    return keyLower.includes(fieldLower) || fieldLower.includes(keyLower) ||
-                                           keyLower === fieldLower;
-                                  });
-                                  if (projectKeyPartial) {
-                                    console.log(`  Found flexible match in project data: ${projectKeyPartial} = ${projectData[projectKeyPartial]}`);
-                                    return projectData[projectKeyPartial];
-                                  }
-                                  
-                                  // Special mappings for common field name variations
-                                  const fieldMappings: { [key: string]: string[] } = {
-                                    'id': ['Id', 'ID', 'id'],
-                                    'plotid': ['Plot ID', 'PlotID', 'Plot_ID', 'plot_id'],
-                                    'projectname': ['Project Name', 'Project_Name', 'project_name'],
-                                    'country': ['Country', 'COUNTRY', 'country'],
-                                    'site': ['Site', 'site', 'Site ID', 'site_id'],
-                                    'plot': ['Plot', 'plot', 'Plot Name', 'plot_name'],
-                                    'power': ['Power', 'power', 'Power Availability', 'power_availability'],
-                                    'partner': ['Partner', 'partner', 'Primary Project Partner', 'project_partner']
-                                  };
-                                  
-                                  const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                  const possibleKeys = fieldMappings[normalizedFieldName] || [];
-                                  
-                                  for (const possibleKey of possibleKeys) {
-                                    if (plot.basic_data && plot.basic_data[possibleKey] !== undefined) {
-                                      console.log(`  Found via mapping in plot data: ${possibleKey} = ${plot.basic_data[possibleKey]}`);
-                                      return plot.basic_data[possibleKey];
-                                    }
-                                    if (projectData[possibleKey] !== undefined) {
-                                      console.log(`  Found via mapping in project data: ${possibleKey} = ${projectData[possibleKey]}`);
-                                      return projectData[possibleKey];
-                                    }
-                                  }
-                                  
-                                  console.log(`  No match found for: "${fieldName}"`);
-                                  return null;
-                                };
-                                
-                                // Filter schema to only show fields that exist in the actual data
-                                return schemaData
-                                  .filter(field => 
-                                    allPresentFieldNames.some(dataField => 
-                                      dataField.toLowerCase() === field["Field Name"]?.toLowerCase() ||
-                                      dataField.toLowerCase().includes(field["Field Name"]?.toLowerCase()) ||
-                                      field["Field Name"]?.toLowerCase().includes(dataField.toLowerCase())
-                                    )
-                                  )
-                                  .sort((a, b) => {
-                                    // Sort by Field Order from schema (ascending)
-                                    const orderA = a["Field Order"] || 9999;
-                                    const orderB = b["Field Order"] || 9999;
-                                    console.log(`Sorting field ${a["Field Name"]} (order: ${orderA}) vs ${b["Field Name"]} (order: ${orderB})`);
-                                    return orderA - orderB;
-                                  })
-                                  .map((field, idx) => {
-                                    const fieldValue = findMatchingValue(field["Field Name"]);
-                                    return (
-                                      <div key={idx} className={`${field.Type} ${field["Field Name"]} text-xs border-b border-border/10 pb-1`}>
-                                        <div className="flex justify-between items-start gap-2">
-                                          <div className="flex-1">
-                                            <div className="font-medium text-foreground">
-                                              {field["Field Name"]}
-                                            </div>
-                                            <div className="text-muted-foreground">
-                                              Type: {field.Type} | ID: {field["Field ID"]}
-                                            </div>
-                                            {field.Table && (
-                                              <div className="text-blue-500 text-xs">
-                                                Table: {field.Table} {field.Category && `| ${field.Category}`} {field.Subcategory && `| ${field.Subcategory}`}
-                                              </div>
-                                            )}
-                                          </div>
-                                          <div className="flex-shrink-0 text-right max-w-xs">
-                                            <div className="font-medium text-green-700 bg-green-50 px-2 py-1 rounded text-xs">
-                                              {fieldValue !== null ? (
-                                                Array.isArray(fieldValue) 
-                                                  ? fieldValue.join(', ')
-                                                  : String(fieldValue)
-                                              ) : 'N/A'}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  });
-                              })()}
-                              
-                              {/* Show unmapped fields with their values */}
-                              {(() => {
-                                const plotFieldNames = plot.basic_data ? Object.keys(plot.basic_data) : [];
-                                const projectData = plotsData.projects.length > 0 && plotsData.projects[0].basic_data 
-                                  ? plotsData.projects[0].basic_data 
-                                  : {};
-                                const projectFieldNames = Object.keys(projectData);
-                                
-                                const allPresentFieldNames = [...plotFieldNames, ...projectFieldNames];
-                                
-                                const unmappedFields = allPresentFieldNames.filter(dataField =>
-                                  !schemaData.some(field => 
-                                    dataField.toLowerCase() === field["Field Name"]?.toLowerCase() ||
-                                    dataField.toLowerCase().includes(field["Field Name"]?.toLowerCase()) ||
-                                    field["Field Name"]?.toLowerCase().includes(dataField.toLowerCase())
-                                  )
-                                );
-                                
-                                return unmappedFields.length > 0 && (
-                                  <div className="mt-3 pt-3 border-t border-border/20">
-                                    <div className="text-xs font-medium text-orange-600 mb-2">Unmapped Fields:</div>
-                                    {unmappedFields.map((fieldName, idx) => {
-                                      const fieldValue = (plot.basic_data && plot.basic_data[fieldName]) || projectData[fieldName] || 'N/A';
-                                      return (
-                                        <div key={idx} className="text-xs border-b border-border/10 pb-1">
-                                          <div className="flex justify-between items-start gap-2">
-                                            <div className="flex-1">
-                                              <div className="font-medium text-orange-500">
-                                                {fieldName}
-                                              </div>
-                                              <div className="text-muted-foreground">
-                                                Type: Unknown | Not in schema
-                                              </div>
-                                            </div>
-                                            <div className="flex-shrink-0 text-right max-w-xs">
-                                              <div className="font-medium text-orange-700 bg-orange-50 px-2 py-1 rounded text-xs">
-                                                {Array.isArray(fieldValue) 
-                                                  ? fieldValue.join(', ')
-                                                  : String(fieldValue)
-                                                }
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                            // Estimate height based on content length (rough approximation)
+                            const estimatedHeight = Math.max(60, Math.min(120, 60 + Math.floor(contentLength / 50) * 20));
+                            fieldHeights[fieldId] = Math.max(fieldHeights[fieldId] || 60, estimatedHeight);
+                          });
+                        });
+
+                        // Also calculate for project fields if available
+                        if (plotsData.projects.length > 0) {
+                          const projectSchema = (schemaData || []).filter(field => field.Table === "Projects");
+                          const parentProject = plotsData.projects[0];
+                          projectSchema.forEach((field) => {
+                            const fieldId = field["Field ID"];
+                            const fieldValue = parentProject.basic_data?.[fieldId];
+                            const contentLength = fieldValue !== null && fieldValue !== undefined ? 
+                              (Array.isArray(fieldValue) ? fieldValue.join(', ').length : String(fieldValue).length) : 
+                              3;
+                            
+                            const estimatedHeight = Math.max(60, Math.min(120, 60 + Math.floor(contentLength / 50) * 20));
+                            fieldHeights[`project-${fieldId}`] = Math.max(fieldHeights[`project-${fieldId}`] || 60, estimatedHeight);
+                          });
+                        }
+
+                        return plotsData.plots.map((plot) => {
+                          const parentProject = plotsData.projects.length > 0 ? {
+                            _db_id: plotsData.projects[0].id,
+                            values: plotsData.projects[0].basic_data
+                          } : undefined;
+
+                          return (
+                            <PlotDisplay
+                              key={plot.id}
+                              plot={plot}
+                              parentProject={parentProject}
+                              schema={schemaData || []}
+                              fieldHeights={fieldHeights}
+                            />
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}

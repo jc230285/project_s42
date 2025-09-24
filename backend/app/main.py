@@ -11,6 +11,7 @@ import json
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, Any
+from collections import OrderedDict
 import base64
 from . import nocodb_sync
 
@@ -93,11 +94,144 @@ async def cors_handler(request, call_next):
 
 # Custom JSON encoder for datetime and decimal objects
 def json_serial(obj):
-    if isinstance(obj, (datetime, date)):
+    import uuid
+    if obj is None:
+        return None
+    elif isinstance(obj, (datetime, date)):
         return obj.isoformat()
     elif isinstance(obj, Decimal):
         return float(obj)
-    raise TypeError(f"Type {type(obj)} not serializable")
+    elif isinstance(obj, OrderedDict):
+        return dict(obj)
+    elif isinstance(obj, uuid.UUID):
+        return str(obj)
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='ignore')
+    elif isinstance(obj, set):
+        return list(obj)
+    elif hasattr(obj, '__dict__'):
+        return obj.__dict__
+    else:
+        # Convert unknown types to string as last resort
+        return str(obj)
+
+def process_schema_data(user_token: Optional[str] = None):
+    """Helper function to process schema data with proper ordering from NocoDB dropdown options"""
+    # Use user token if available, otherwise fall back to environment token
+    api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+    nocodb_api_url = os.getenv("NOCODB_API_URL")
+    nocodb_schema_table_id = "m72851bbm1z0qul"  # Schema table ID
+    
+    # Try to get the table structure to extract dropdown option orders
+    category_order_map = {}
+    subcategory_order_map = {}
+    
+    try:
+        table_info_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_schema_table_id}"
+        headers = {"xc-token": api_token, "Content-Type": "application/json"}
+        
+        table_response = requests.get(table_info_url, headers=headers, verify=False)
+        if table_response.status_code == 200:
+            table_info = table_response.json()
+            
+            # Extract dropdown option orders from table columns
+            for column in table_info.get("columns", []):
+                column_id = column.get("id")
+                if column_id == "c3xywkmub993x24":  # Category field
+                    options = column.get("colOptions", {}).get("options", [])
+                    for option in options:
+                        title = option.get("title", "")
+                        order = option.get("order", 999)
+                        if title:
+                            category_order_map[title] = order
+                elif column_id == "ceznmyuazlgngiw":  # Subcategory field
+                    options = column.get("colOptions", {}).get("options", [])
+                    for option in options:
+                        title = option.get("title", "")
+                        order = option.get("order", 999)
+                        if title:
+                            subcategory_order_map[title] = order
+            
+            print(f"📋 Loaded {len(category_order_map)} category options and {len(subcategory_order_map)} subcategory options from table structure")
+        else:
+            print(f"⚠️  Failed to fetch table structure (status {table_response.status_code}), using fallback ordering")
+    except Exception as e:
+        print(f"⚠️  Exception fetching table structure: {e}, using fallback ordering")
+    
+    # If we couldn't get the dropdown orders, use fallback ordering
+    if not category_order_map:
+        print("📋 Using fallback category ordering")
+        FALLBACK_CATEGORY_ORDER = [
+            "Database", "Project", "Contact", "Summary", "Location", "General",
+            "LandPlot", "Power", "Connectivity", "AI"
+        ]
+        for i, category in enumerate(FALLBACK_CATEGORY_ORDER):
+            category_order_map[category] = i + 1
+    
+    # Fetch raw schema data from NocoDB
+    schema_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_schema_table_id}/records"
+    headers = {"xc-token": api_token, "Content-Type": "application/json"}
+    params = {"limit": 1000, "offset": 0}
+    
+    schema_response = requests.get(schema_url, headers=headers, params=params, verify=False)
+    if schema_response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to fetch schema")
+    
+    schema_data = schema_response.json()
+    all_records = schema_data.get("list", [])
+    
+    # Process records with proper ordering from dropdown options
+    processed_records = []
+    
+    def get_category_order(category_value):
+        """Get order from NocoDB dropdown option definition"""
+        return category_order_map.get(category_value, 999)
+    
+    def get_subcategory_order(subcategory_value):
+        """Get order from NocoDB dropdown option definition"""
+        return subcategory_order_map.get(subcategory_value, 999)
+    
+    for record in all_records:
+        category_value = record.get("Category", "")
+        subcategory_value = record.get("Subcategory", "")
+        
+        category_order = get_category_order(category_value)
+        subcategory_order = get_subcategory_order(subcategory_value)
+        
+        processed_record = {
+            "id": record.get("id"),
+            "Field Name": record.get("Field Name", ""),
+            "Description": record.get("Description", ""),
+            "Field Order": record.get("Field Order", 999),
+            "Category": category_value,
+            "Subcategory": subcategory_value,
+            "category_order": category_order,
+            "subcategory_order": subcategory_order,
+            "Type": record.get("Type", ""),
+            "Field ID": record.get("Field ID", ""),
+            "Table": record.get("Table", ""),
+            "meta": record.get("meta", ""),
+            "Options": record.get("Options", ""),
+            "created_at": record.get("created_at"),
+            "updated_at": record.get("updated_at")
+        }
+        processed_records.append(processed_record)
+    
+    # Sort by category_order, subcategory_order, then Field Order
+    def safe_int(value, default=999):
+        try:
+            return int(value) if value is not None else default
+        except (ValueError, TypeError):
+            return default
+    
+    def sort_key_func(record):
+        category_order = safe_int(record.get("category_order", 999))
+        subcategory_order = safe_int(record.get("subcategory_order", 999))
+        field_order = safe_int(record.get("Field Order", 999))
+        return (category_order, subcategory_order, field_order)
+    
+    processed_records.sort(key=sort_key_func)
+    return processed_records
 
 async def get_current_user(authorization: Optional[str] = Header(None)):
     """
@@ -737,140 +871,229 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
 
 @app.get("/projects/plots", tags=["Projects"])
 def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Optional[str] = Query(None, description="Comma-separated list of numeric plot IDs to filter by")):
-    """Get detailed plots and projects data from NocoDB based on selected numeric plot IDs"""
+    """Get detailed plots and projects data in export script format with schema and nested projects/plots structure"""
+    from collections import OrderedDict
+    
     try:
-        # Get NocoDB configuration from environment variables
-        nocodb_api_url = os.getenv("NOCODB_API_URL")
-        nocodb_api_token = os.getenv("NOCODB_API_TOKEN")
-        nocodb_base_id = os.getenv("NOCODB_BASE_ID")
-        
-        # Table IDs
-        nocodb_projects_table_id = os.getenv("NOCODB_PROJECTS_TABLE_ID", "mftsk8hkw23m8q1")
-        nocodb_plots_table_id = os.getenv("NOCODB_PLOTS_TABLE_ID", "mmqclkrvx9lbtpc")  # Land Plots, Sites
-        
-        # Validate required environment variables
-        if not nocodb_api_url or not nocodb_api_token or not nocodb_base_id:
-            return JSONResponse(
-                content={"error": "NocoDB configuration missing"}, 
-                status_code=500
-            )
-        
-        # Set up headers for NocoDB API
-        headers = {
-            "xc-token": nocodb_api_token,
-            "Content-Type": "application/json"
-        }
-        
         # Parse numeric plot IDs from query parameter
         selected_plot_ids = []
         if plot_ids:
-            selected_plot_ids = [pid.strip() for pid in plot_ids.split(',') if pid.strip()]
+            selected_plot_ids = [int(pid.strip()) for pid in plot_ids.split(',') if pid.strip().isdigit()]
         
-        # Get plots data
-        plots_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_plots_table_id}/records"
-        plots_params = {"limit": 1000, "offset": 0}
-        plots_response = requests.get(plots_url, headers=headers, params=plots_params, verify=False)
+        # If no plot_ids provided, return empty structure
+        if not selected_plot_ids:
+            return JSONResponse(content={
+                "schema": [],
+                "data": {"projects": []},
+                "exported_at": datetime.now().isoformat(),
+                "message": "No plot IDs provided. Use ?plot_ids=1,42,3 to specify plots to export."
+            })
         
-        if plots_response.status_code != 200:
-            return JSONResponse(
-                content={"error": f"Failed to fetch plots: {plots_response.status_code}"}, 
-                status_code=500
+        # -------------------------
+        # 1) FETCH & PREP SCHEMA (reuse existing schema endpoint logic)
+        # -------------------------
+        
+        # Get user-specific NocoDB token, fallback to environment token
+        user_token = None
+        user_email = current_user.get('email')
+        
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and user_data['nocodb_api']:
+                    user_token = user_data['nocodb_api']
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        
+        # Use the helper function to get properly processed and sorted schema
+        schema_all_processed = process_schema_data(user_token if isinstance(user_token, str) else None)
+        
+        # Filter for our two tables
+        SCHEMA_TABLES = {"Projects", "Land Plots, Sites"}
+        schema_sorted = [r for r in schema_all_processed if r.get("Table") in SCHEMA_TABLES]
+        
+        # Split schema by table for quick iteration
+        schema_by_table = {
+            "Projects": [r for r in schema_sorted if r["Table"] == "Projects"],
+            "Land Plots, Sites": [r for r in schema_sorted if r["Table"] == "Land Plots, Sites"],
+        }
+        
+        # -------------------------
+        # 2) DB CONNECT & HELPER FUNCTIONS
+        # -------------------------
+        DB_TABLES = {"Projects": "Projects", "Land Plots, Sites": "LandPlots"}
+        
+        def normalize_schema_name(name: str) -> str:
+            """Normalize a schema 'Field Name' into a DB-like column key (lowercase)."""
+            return (
+                name.replace(" ", "_")
+                .replace("-", "_")
+                .replace("/", "_")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("%", "pct")
+                .replace("&", "and")
+                .replace("__", "_")
+                .strip("_")
+                .lower()
             )
         
-        plots_data = plots_response.json()
-        all_plots = plots_data.get("list", [])
+        def make_colmap(cursor, table_name: str):
+            """Return mapping: normalized_lower_name -> actual DB column name."""
+            cursor.execute(f"SHOW COLUMNS FROM `{table_name}`")
+            m = {}
+            for row in cursor.fetchall():
+                col = row["Field"]
+                m[col.lower()] = col                           # raw lowercase
+                m[normalize_schema_name(col)] = col            # normalized lowercase
+            return m
         
-        # Get projects data
-        projects_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_projects_table_id}/records"
-        projects_params = {"limit": 1000, "offset": 0}
-        projects_response = requests.get(projects_url, headers=headers, params=projects_params, verify=False)
+        def find_db_col(colmap: dict, schema_field_name: str):
+            """Find actual DB column for a schema field name."""
+            key1 = schema_field_name.lower()
+            key2 = normalize_schema_name(schema_field_name)
+            return colmap.get(key1) or colmap.get(key2)
         
-        if projects_response.status_code != 200:
-            return JSONResponse(
-                content={"error": f"Failed to fetch projects: {projects_response.status_code}"}, 
-                status_code=500
-            )
+        def ordered_values_for_row(row: dict, table_name: str, schema_fields_sorted: list, colmap: dict):
+            """Build an OrderedDict of FieldID -> value for the given DB row."""
+            result = OrderedDict()
+            for f in schema_fields_sorted:
+                if f["Table"] != table_name:
+                    continue
+                field_id = f["Field ID"]
+                db_col = find_db_col(colmap, f["Field Name"])
+                val = row.get(db_col) if db_col and db_col in row else None
+                result[field_id] = val
+            return result
         
-        projects_data = projects_response.json()
-        all_projects = projects_data.get("list", [])
+        conn = mysql.connector.connect(
+            host=os.getenv("DB_HOST", "10.1.8.51"),
+            user=os.getenv("DB_USER", "s42project"),
+            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            database=os.getenv("DB_NAME", "nocodb"),
+            port=int(os.getenv("DB_PORT", "3306")),
+        )
+        cursor = conn.cursor(dictionary=True)
         
-        # Filter plots by the numeric IDs directly
-        filtered_plots = []
-        linked_projects = []
+        # Column maps
+        colmap_projects = make_colmap(cursor, DB_TABLES["Projects"])
+        colmap_landplots = make_colmap(cursor, DB_TABLES["Land Plots, Sites"])
         
+        # -------------------------
+        # 3) LOAD SELECTED LAND PLOTS
+        # -------------------------
         if selected_plot_ids:
-            # Find plots by their database ID
-            for plot in all_plots:
-                plot_id = str(plot.get("Id", ""))
-                if plot_id in selected_plot_ids:
-                    filtered_plots.append(plot)
-            
-            # Now find the linked projects based on ProjectID relationship
-            project_ids_to_find = []
-            for plot in filtered_plots:
-                project_id = plot.get("ProjectID")
-                if project_id:
-                    # ProjectID might be a list or single value
-                    if isinstance(project_id, list):
-                        project_ids_to_find.extend([str(pid) for pid in project_id])
-                    else:
-                        project_ids_to_find.append(str(project_id))
-            
-            # Find matching projects by their ID
-            for project in all_projects:
-                project_id = str(project.get("Id", ""))
-                if project_id in project_ids_to_find:
-                    linked_projects.append(project)
-            
+            placeholders = ",".join(["%s"] * len(selected_plot_ids))
+            cursor.execute(f"SELECT * FROM `{DB_TABLES['Land Plots, Sites']}` WHERE id IN ({placeholders})", selected_plot_ids)
         else:
-            # If no filter, get all plots and all projects
-            filtered_plots = all_plots
-            linked_projects = all_projects
+            cursor.execute(f"SELECT * FROM `{DB_TABLES['Land Plots, Sites']}`")
         
-        # Process plots with proper title from LandplotD field
-        processed_plots = []
-        for plot in filtered_plots:
-            # Use the LandplotD field (cf11jae1lts4tb1) as the plot title
-            plot_title = plot.get("cf11jae1lts4tb1", "") or plot.get("LandplotD", "") or plot.get("Plot ID", "")
+        plot_rows = cursor.fetchall() or []
+        
+        # Build plot objects with ordered values
+        plots = []
+        for r in plot_rows:
+            values = ordered_values_for_row(
+                r,
+                "Land Plots, Sites",
+                schema_by_table["Land Plots, Sites"],
+                colmap_landplots,
+            )
             
-            processed_plots.append({
-                "id": plot.get("Id"),
-                "plot_id": plot.get("Plot ID", ""),
-                "plot_title": plot_title,  # Use LandplotD as the main title
-                "landplot_d": plot.get("cf11jae1lts4tb1", ""),  # Explicit field reference
-                "basic_data": plot  # Include all raw data
+            # Find the project FK column
+            fk_project_id = None
+            for possible_col in ["projects_id", "Projects_id", "project_id", "ProjectID"]:
+                if possible_col in r:
+                    fk_project_id = r[possible_col]
+                    break
+            
+            plots.append({
+                "_db_id": r.get("id"),
+                "_fk_projects_id": fk_project_id,
+                "values": dict(values)  # Convert OrderedDict to regular dict for JSON serialization
             })
         
-        # Process a sample of projects 
-        processed_projects = []
-        for project in linked_projects[:5]:  # Limit to first 5 projects for now
-            processed_projects.append({
-                "id": project.get("Id"),
-                "project_name": project.get("Project Name", ""),
-                "basic_data": project  # Include all raw data
-            })
+        # -------------------------
+        # 4) FIGURE OUT PROJECT IDS FROM THOSE PLOTS
+        # -------------------------
+        project_ids = sorted({p["_fk_projects_id"] for p in plots if p["_fk_projects_id"] is not None})
+        projects = []
         
-        return JSONResponse(content={
-            "plots": processed_plots,
-            "projects": processed_projects,
-            "selected_plot_ids": selected_plot_ids,
-            "plots_count": len(processed_plots),
-            "projects_count": len(processed_projects),
-            "total_plots_available": len(all_plots),
-            "total_projects_available": len(all_projects),
-            "schema_fields_mapped": 0,  # Temporarily disabled
-            "debug": {
-                "data_source_priority": "Land Plots -> Projects via ProjectID relationship",
-                "filtering_method": "Plot ID -> ProjectID -> Project ID matching",
-                "total_plots_in_db": len(all_plots),
-                "filtered_plots_count": len(filtered_plots),
-                "linked_projects_count": len(linked_projects),
-                "selected_plot_ids": selected_plot_ids,
-                "relationship_mapping": "Land Plots.ProjectID -> Projects.Id",
-                "schema_processing": "TEMPORARILY_DISABLED"
-            },
-            "source": "NocoDB API v2 - Proper ProjectID Relationship Mapping"
-        })
+        if project_ids:
+            placeholders = ",".join(["%s"] * len(project_ids))
+            cursor.execute(f"SELECT * FROM `{DB_TABLES['Projects']}` WHERE id IN ({placeholders})", project_ids)
+            proj_rows = cursor.fetchall() or []
+            
+            # Group plots by FK
+            plots_by_pid = {}
+            for p in plots:
+                pid = p["_fk_projects_id"]
+                if pid is not None:
+                    plots_by_pid.setdefault(pid, []).append(p)
+            
+            # Build project objects with only their own plots
+            for r in proj_rows:
+                values = ordered_values_for_row(
+                    r,
+                    "Projects",
+                    schema_by_table["Projects"],
+                    colmap_projects,
+                )
+                pid = r.get("id")
+                projects.append({
+                    "_db_id": pid,
+                    "values": dict(values),  # Convert OrderedDict to regular dict for JSON serialization
+                    "plots": plots_by_pid.get(pid, [])
+                })
+        
+        cursor.close()
+        conn.close()
+        
+        # -------------------------
+        # 5) OUTPUT (schema first, then data)
+        # -------------------------
+        output = {
+            "schema": schema_sorted,                    # full, untouched rows, sorted
+            "data": {"projects": projects},             # only relevant projects, each with its own plots
+            "exported_at": datetime.now().isoformat(),
+            "summary": {
+                "total_projects": len(projects),
+                "total_plots": len(plots),
+                "requested_plot_ids": selected_plot_ids,
+                "found_plot_ids": [p["_db_id"] for p in plots],
+                "projects_found": project_ids
+            }
+        }
+        
+        # Build response manually and use json_serial to handle Decimal types
+        response_data = {
+            "schema": schema_sorted,
+            "data": {"projects": projects},
+            "exported_at": datetime.now().isoformat(),
+            "summary": {
+                "total_projects": len(projects),
+                "total_plots": len(plots),
+                "requested_plot_ids": selected_plot_ids,
+                "found_plot_ids": [p["_db_id"] for p in plots],
+                "projects_found": project_ids
+            }
+        }
+        
+        # Use json_serial to handle Decimal and other non-serializable types
+        import json
+        serialized_data = json.loads(json.dumps(response_data, default=json_serial))
+        return JSONResponse(content=serialized_data)
         
     except requests.exceptions.RequestException as e:
         return JSONResponse(
@@ -882,6 +1105,8 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
             content={"error": f"Unexpected error: {str(e)}"}, 
             status_code=500
         )
+
+
 
 
 # Map API endpoints added at the end
