@@ -1,4 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
+import { useSession } from 'next-auth/react';
 
 interface SchemaField {
   "Field Name": string;
@@ -59,6 +61,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
   recordId,
   tableName
 }) => {
+  const { data: session } = useSession();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -68,6 +71,18 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
     
     setIsSaving(true);
     try {
+      // Create auth header like other components
+      if (!session?.user?.email) {
+        throw new Error("No session available");
+      }
+      
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
       // Determine the correct table ID based on table name
       const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
       
@@ -75,6 +90,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': authHeader,
         },
         body: JSON.stringify({
           table_id: tableId,
@@ -86,16 +102,20 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update field');
+        const errorData = await response.text();
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`Failed to update field: ${response.status} ${response.statusText}`);
       }
 
-      // Show success toast (you might want to add a toast library)
-      console.log('Field updated successfully');
+      const result = await response.json();
+      console.log('Field updated successfully:', result);
+      
       setIsEditing(false);
+      toast.success(`${field["Field Name"]} updated!`);
+      
     } catch (error) {
       console.error('Error updating field:', error);
-      // Show error toast
-      alert('Failed to update field');
+      toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -181,6 +201,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   recordId,
   tableName
 }) => {
+  const { data: session } = useSession();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -189,7 +210,23 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
     if (isSaving) return;
     
     setIsSaving(true);
+    
+    // Show loading toast
+    const loadingToast = toast.loading('Saving changes...');
+    
     try {
+      // Create auth header like other components
+      if (!session?.user?.email) {
+        throw new Error("No session available");
+      }
+      
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
       // Determine the correct table ID based on table name
       const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
       
@@ -197,6 +234,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': authHeader,
         },
         body: JSON.stringify({
           table_id: tableId,
@@ -208,14 +246,23 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to update field');
+        const errorData = await response.text();
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`Failed to update field: ${response.status} ${response.statusText}`);
       }
 
-      console.log('Field updated successfully');
+      const result = await response.json();
+      console.log('Field updated successfully:', result);
+      
+      // Close modal and show success toast
       setIsModalOpen(false);
+      toast.dismiss(loadingToast);
+      toast.success(`${field["Field Name"]} updated successfully!`);
+      
     } catch (error) {
       console.error('Error updating field:', error);
-      alert('Failed to update field');
+      toast.dismiss(loadingToast);
+      toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
