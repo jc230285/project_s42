@@ -64,6 +64,10 @@ app = FastAPI(
         {
             "name": "map",
             "description": "Map visualization and geographic data"
+        },
+        {
+            "name": "companies",
+            "description": "Company data and analytics"
         }
     ]
 )
@@ -1561,10 +1565,224 @@ async def get_nocodb_table_info(table_id: str, current_user: dict = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/api/map-stats', tags=["Debug"])
-def get_map_stats_placeholder():
-    """Get map statistics - placeholder endpoint"""
-    return {"placeholder": "to be implemented"}
+@app.get('/api/map-data', tags=["Map"])
+def get_api_map_data(current_user: dict = Depends(get_current_user), partner: str = Query("all", description="Filter by Primary Project Partner")):
+    """Get map visualization data with site locations and coordinates"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Query to get plot/site data with coordinates and project information
+        # Join LandPlots with Projects to get partner information
+        if partner == "all":
+            query = """
+            SELECT 
+                l.id,
+                l.Plot_Name,
+                l.Site_Address,
+                l.Latitude,
+                l.Longitude,
+                l.Country,
+                l.LandPlotID,
+                l.geojson,
+                p.Project_Name,
+                p.Project_Code,
+                p.`Primary Project Partner`
+            FROM LandPlots l
+            LEFT JOIN Projects p ON l.Project_ID = p.Id
+            WHERE l.Latitude IS NOT NULL 
+            AND l.Longitude IS NOT NULL
+            AND l.Latitude != 0
+            AND l.Longitude != 0
+            """
+            cursor.execute(query)
+        else:
+            query = """
+            SELECT 
+                l.id,
+                l.Plot_Name,
+                l.Site_Address,
+                l.Latitude,
+                l.Longitude,
+                l.Country,
+                l.LandPlotID,
+                l.geojson,
+                p.Project_Name,
+                p.Project_Code,
+                p.`Primary Project Partner`
+            FROM LandPlots l
+            LEFT JOIN Projects p ON l.Project_ID = p.Id
+            WHERE l.Latitude IS NOT NULL 
+            AND l.Longitude IS NOT NULL
+            AND l.Latitude != 0
+            AND l.Longitude != 0
+            AND p.`Primary Project Partner` = %s
+            """
+            cursor.execute(query, (partner,))
+        
+        sites_data = cursor.fetchall() or []
+        cursor.close()
+        conn.close()
+        
+        # Convert to JSON with datetime serialization to handle Decimal and other types
+        json_data = json.loads(json.dumps(sites_data, default=json_serial))
+        
+        return JSONResponse(content={
+            "sites": json_data,
+            "count": len(json_data),
+            "partner_filter": partner if partner != "all" else None
+        })
+        
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Failed to load map data: {str(e)}"}, 
+            status_code=500
+        )
+
+@app.get('/api/map-stats', tags=["Map"])
+def get_api_map_stats(current_user: dict = Depends(get_current_user)):
+    """Get map statistics and analytics"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Count total projects
+        cursor.execute("SELECT COUNT(*) as count FROM Projects")
+        total_projects_result = cursor.fetchone()
+        total_projects = total_projects_result["count"] if total_projects_result else 0
+        
+        # Count total plots/sites
+        cursor.execute("SELECT COUNT(*) as count FROM LandPlots")
+        total_plots_result = cursor.fetchone()
+        total_plots = total_plots_result["count"] if total_plots_result else 0
+        
+        # Count sites with coordinates
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM LandPlots 
+            WHERE Latitude IS NOT NULL 
+            AND Longitude IS NOT NULL
+            AND Latitude != 0
+            AND Longitude != 0
+        """)
+        coords_result = cursor.fetchone()
+        sites_with_coords = coords_result["count"] if coords_result else 0
+        
+        # Count sites with geojson
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM LandPlots 
+            WHERE geojson IS NOT NULL 
+            AND geojson != ''
+        """)
+        geojson_result = cursor.fetchone()
+        sites_with_geojson = geojson_result["count"] if geojson_result else 0
+        
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content={
+            "total_projects": int(total_projects) if total_projects else 0,
+            "total_plots": int(total_plots) if total_plots else 0,
+            "sites_with_coords": int(sites_with_coords) if sites_with_coords else 0,
+            "sites_with_geojson": int(sites_with_geojson) if sites_with_geojson else 0
+        })
+        
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Failed to load map stats: {str(e)}"}, 
+            status_code=500
+        )
+
+@app.get('/api/projects-partners', tags=["Map"])  
+def get_api_projects_partners(current_user: dict = Depends(get_current_user)):
+    """Get unique project partners for map filtering - matches frontend API path"""
+    try:
+        # Get NocoDB configuration from environment variables
+        nocodb_api_url = os.getenv("NOCODB_API_URL")
+        nocodb_api_token = os.getenv("NOCODB_API_TOKEN")
+        nocodb_base_id = os.getenv("NOCODB_BASE_ID")
+        nocodb_projects_table_id = os.getenv("NOCODB_PROJECTS_TABLE_ID")
+        
+        # First try NocoDB API
+        if all([nocodb_api_url, nocodb_api_token, nocodb_base_id, nocodb_projects_table_id]):
+            try:
+                headers = {
+                    "Content-Type": "application/json",
+                    "xc-auth": nocodb_api_token
+                }
+                
+                # Fetch all projects from NocoDB
+                response = requests.get(
+                    f"{nocodb_api_url}/api/v1/db/data/{nocodb_base_id}/{nocodb_projects_table_id}",
+                    headers=headers,
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    projects_data = response.json()
+                    projects = projects_data.get("list", [])
+                    
+                    # Extract unique partners from Primary Project Partner field (c3jk8g4qwvqsrpj)
+                    partners = set()
+                    for project in projects:
+                        partner = project.get("c3jk8g4qwvqsrpj")  # Primary Project Partner field ID
+                        if partner and partner.strip() and partner != "N/A":
+                            partners.add(partner.strip())
+                    
+                    # Convert to sorted list
+                    unique_partners = sorted(list(partners))
+                    
+                    return JSONResponse(content={
+                        "partners": unique_partners,
+                        "count": len(unique_partners),
+                        "source": "NocoDB API"
+                    })
+                    
+            except requests.exceptions.RequestException as e:
+                # Fall through to MySQL fallback
+                pass
+        
+        # Fallback to MySQL if NocoDB fails
+        try:
+            conn = get_db()
+            cursor = conn.cursor(dictionary=True)
+            
+            # Get unique Primary Project Partner values from MySQL (if it exists)
+            cursor.execute("""
+                SELECT DISTINCT `Primary Project Partner` as partner
+                FROM Projects 
+                WHERE `Primary Project Partner` IS NOT NULL 
+                AND `Primary Project Partner` != ''
+                ORDER BY `Primary Project Partner`
+            """)
+            
+            results = cursor.fetchall() or []
+            cursor.close()
+            conn.close()
+            
+            # Extract just the partner names
+            partners = [row["partner"] for row in results if row["partner"]]
+            
+            return JSONResponse(content={
+                "partners": partners,
+                "count": len(partners),
+                "source": "MySQL fallback"
+            })
+            
+        except Exception as mysql_error:
+            # If both fail, return fallback data
+            fallback_partners = ["N/A", "Biforst Prioritised 8", "GIGA-42", "APL", "GIG", "Bifrost", "Bifrost - Lost"]
+            return JSONResponse(content={
+                "partners": fallback_partners,
+                "count": len(fallback_partners),
+                "source": "fallback data",
+                "note": f"Both NocoDB and MySQL failed: {str(mysql_error)}"
+            })
+        
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Failed to load project partners: {str(e)}"}, 
+            status_code=500
+        )
 
 @app.get("/user-info/{email}", tags=["User Management"])
 def get_user_info(email: str, current_user: dict = Depends(get_current_user)):
@@ -1703,3 +1921,388 @@ def update_user_login(user_data: dict, current_user: dict = Depends(get_current_
         
     except Exception as e:
         return {"error": str(e)}
+
+@app.get('/api/nocodb/map-data', tags=["Map"])
+def get_nocodb_map_data(partner: str = Query("all", description="Filter by Primary Project Partner")):
+    """Get map visualization data from NocoDB with site locations, coordinates, and statistics"""
+    print(f"🔍 Function called with partner: {partner}")
+    try:
+        print("🔍 Starting combined map data and stats fetch from NocoDB")
+        # NocoDB configuration
+        nocodb_api_url = os.getenv("NOCODB_API_URL", "https://nocodb.edbmotte.com")
+        api_token = os.getenv("NOCODB_API_TOKEN")
+        nocodb_projects_table_id = os.getenv("NOCODB_PROJECTS_TABLE_ID", "mftsk8hkw23m8q1")
+        land_plots_table_id = os.getenv("NOCODB_PLOTS_TABLE_ID", "mmqclkrvx9lbtpc")  # Use environment variable
+        
+        print(f"🔑 API URL: {nocodb_api_url}")
+        print(f"🔑 Token present: {bool(api_token)}")
+        print(f"🔑 Projects table ID: {nocodb_projects_table_id}")
+        print(f"🔑 Plots table ID: {land_plots_table_id}")
+        
+        if not api_token:
+            return JSONResponse(
+                content={"error": "NOCODB_API_TOKEN not set"}, 
+                status_code=500
+            )
+        
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+        
+        # First, fetch projects to build partner mapping
+        projects_api_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_projects_table_id}/records"
+        print(f"🔗 Projects API URL: {projects_api_url}")
+        projects_response = requests.get(projects_api_url, headers=headers, params={"limit": 1000}, verify=False)
+        projects_response.raise_for_status()
+        projects_data = projects_response.json()
+        print(f"📊 Projects data keys: {list(projects_data.keys()) if projects_data else 'None'}")
+        print(f"📊 Projects list length: {len(projects_data.get('list', [])) if projects_data else 0}")
+        
+        # Build mapping of project ID to partner
+        project_partner_map = {}
+        unique_projects = set()
+        for project in projects_data.get('list', []):
+            project_id = project.get('Id')
+            partner_name = project.get('Primary Project Partner', '').strip()
+            if project_id:
+                project_partner_map[project_id] = partner_name
+                unique_projects.add(project_id)  # Track unique projects
+        
+        print(f"📊 Built partner mapping for {len(project_partner_map)} projects")
+        print(f"📊 Total unique projects: {len(unique_projects)}")
+        
+        # Fetch land plots data from NocoDB
+        api_url = f"{nocodb_api_url}/api/v2/tables/{land_plots_table_id}/records"
+        print(f"🌐 Making request to: {api_url}")
+        response = requests.get(api_url, headers=headers, params={"limit": 1000}, verify=False)
+        print(f"✅ Response status: {response.status_code}")
+        response.raise_for_status()
+        data = response.json()
+        print(f"📊 Got {len(data.get('list', []))} records from NocoDB")
+        
+        plots = []
+        countries = set()
+        secured_sites = 0
+        sites_with_coords = 0
+        
+        for record in data.get('list', []):
+            # Look for coordinates in GeoData field (Field ID: cm98xmz0s2px4iu)
+            coordinates = record.get('Coordinates')  # Display name
+            if not coordinates:
+                # Try the field ID directly if display name doesn't work
+                coordinates = record.get('cm98xmz0s2px4iu')
+            
+            has_valid_coords = False
+            if coordinates:
+                try:
+                    # Verify coordinates can be parsed
+                    if ';' not in coordinates:
+                        has_valid_coords = False
+                    else:
+                        lat_str, lon_str = coordinates.split(';')
+                        if lat_str and lon_str:
+                            float(lat_str.strip())
+                            float(lon_str.strip())
+                            has_valid_coords = True
+                            sites_with_coords += 1
+                    
+                    if record.get('Country'):
+                        countries.add(record['Country'])
+                    
+                    secure_status = record.get('Secure Status', '')
+                    if secure_status and 'secured' in secure_status.lower():
+                        secured_sites += 1
+                        
+                except (ValueError, AttributeError):
+                    has_valid_coords = False
+            
+            if not has_valid_coords:
+                continue
+                
+            plot = {
+                'id': record.get('Id'),
+                'project_id': record.get('Projects'),  # This might be a foreign key ID
+                'Primary_Project_Partner': project_partner_map.get(record.get('Projects'), 'N/A'),  # Use mapping
+                'Project_Name': record.get('Project Name', ''),
+                'Plot_Name': record.get('Plot Name', f"Plot {record.get('Id')}"),
+                'Description': record.get('Description', ''),
+                'Coordinates': coordinates,  # Keep as string in "lat;lon" format
+                'Plot_Address': record.get('Plot Address', ''),
+                'landsize': record.get('Size (ha) - Primary Plot'),
+                'Site_Elevation_m': record.get('Site Elevation (m)', '0'),
+                'Size__ha____Primary_Plot': record.get('Size (ha) - Primary Plot', '0')
+            }
+            plots.append(plot)
+        
+        # Filter by partner if specified (case-insensitive)
+        if partner and partner != 'all' and partner != '':
+            print(f"🔍 Filtering by partner: '{partner}'")
+            filtered_plots = []
+            for plot in plots:
+                plot_partner = plot.get('Primary_Project_Partner', '').strip()
+                if plot_partner and plot_partner.lower() == partner.lower():
+                    filtered_plots.append(plot)
+            plots = filtered_plots
+            print(f"📊 After filtering: {len(plots)} plots")
+        
+        # Calculate statistics
+        stats = {
+            "total_projects": len(unique_projects),  # Unique projects count
+            "total_plots": sites_with_coords,
+            "sites_with_coords": sites_with_coords,
+            "sites_with_geojson": 0,  # Not implemented yet
+            "countries": len(countries),
+            "secured_sites": secured_sites
+        }
+            
+        return JSONResponse(content={
+            "sites": plots,
+            "stats": stats,  # Stats at the bottom as requested
+            "count": len(plots),
+            "partner_filter": partner if partner != "all" else None
+        })
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ NocoDB error: {str(e)}")
+        print("Full traceback:")
+        traceback.print_exc()
+        return JSONResponse(
+            content={"error": f"Failed to load map data: {str(e)}"}, 
+            status_code=500
+        )
+
+@app.get('/api/nocodb/map-stats', tags=["Map"])
+def get_nocodb_map_stats():
+    """Get map statistics from NocoDB"""
+    try:
+        # NocoDB configuration
+        nocodb_api_url = os.getenv("NOCODB_API_URL", "https://nocodb.edbmotte.com")
+        api_token = os.getenv("NOCODB_API_TOKEN")
+        land_plots_table_id = os.getenv("NOCODB_PLOTS_TABLE_ID", "mmqclkrvx9lbtpc")  # Use environment variable
+        
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+        
+        # Fetch land plots data from NocoDB
+        api_url = f"{nocodb_api_url}/api/v2/tables/{land_plots_table_id}/records"
+        response = requests.get(api_url, headers=headers, params={"limit": 1000}, verify=False)
+        response.raise_for_status()
+        data = response.json()
+        
+        total_sites = 0
+        countries = set()
+        secured_sites = 0
+        
+        for record in data.get('list', []):
+            # Look for coordinates in GeoData field
+            coordinates = record.get('Coordinates')
+            if not coordinates:
+                coordinates = record.get('cm98xmz0s2px4iu')
+            
+            if coordinates:
+                try:
+                    # Verify coordinates can be parsed
+                    lat_str, lon_str = coordinates.split(';')
+                    float(lat_str.strip())
+                    float(lon_str.strip())
+                    
+                    total_sites += 1
+                    if record.get('Country'):
+                        countries.add(record['Country'])
+                    
+                    secure_status = record.get('Secure Status', '')
+                    if secure_status and 'secured' in secure_status.lower():
+                        secured_sites += 1
+                        
+                except (ValueError, AttributeError):
+                    continue
+        
+        return JSONResponse(content={
+            "total_projects": total_sites,  # For compatibility with existing frontend
+            "total_plots": total_sites,
+            "sites_with_coords": total_sites,
+            "sites_with_geojson": 0,  # Not implemented yet
+            "totalSites": total_sites,
+            "countries": len(countries),
+            "securedSites": secured_sites
+        })
+        
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Failed to load map stats: {str(e)}"}, 
+            status_code=500
+        )
+
+@app.get("/companies", tags=["Companies"])
+def get_companies_data(current_user: dict = Depends(get_current_user)):
+    """Get all companies data from companies table with summary statistics"""
+    try:
+        # Connect to MySQL database directly
+        conn = mysql.connector.connect(
+            host='10.1.8.51',
+            user='s42project',
+            password='9JA_)j(WSqJUJ9Y]',
+            database='nocodb',
+            port=3306
+        )
+        cursor = conn.cursor(dictionary=True)
+
+        # Get all companies (not just BUSINESS type)
+        cursor.execute('SELECT * FROM companies ORDER BY full_name')
+        companies_data = cursor.fetchall()
+
+        # Get summary statistics
+        cursor.execute('SELECT type, COUNT(*) as count FROM companies GROUP BY type')
+        type_stats = cursor.fetchall()
+
+        cursor.execute('SELECT company_status, COUNT(*) as count FROM companies WHERE company_status IS NOT NULL GROUP BY company_status ORDER BY count DESC')
+        status_stats = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        # Return all raw company data (like SELECT *)
+        formatted_companies = []
+        for company in companies_data:
+            # Convert date objects to strings for JSON serialization
+            company_dict = {}
+            for key, value in company.items():
+                if hasattr(value, 'isoformat'):  # Handle date/datetime objects
+                    company_dict[key] = value.isoformat()
+                else:
+                    company_dict[key] = value
+            formatted_companies.append(company_dict)
+
+        # Calculate summary statistics
+        total_companies = len(formatted_companies)
+        active_companies = len([c for c in formatted_companies if c.get("company_status") == "Active"])
+        dissolved_companies = len([c for c in formatted_companies if c.get("company_status") == "Dissolved"])
+
+        return JSONResponse(content={
+            "companies": formatted_companies,
+            "summary": {
+                "total_companies": total_companies,
+                "active_companies": active_companies,
+                "dissolved_companies": dissolved_companies,
+                "type_breakdown": {stat["type"]: stat["count"] for stat in type_stats},
+                "status_breakdown": {stat["company_status"]: stat["count"] for stat in status_stats}
+            },
+            "source": "MySQL companies table"
+        })
+
+    except mysql.connector.Error as e:
+        return JSONResponse(
+            content={"error": f"Database error: {str(e)}"},
+            status_code=500
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.get("/wise-accounts/hoyanger", tags=["Wise Accounts"])
+def get_hoyanger_wise_accounts(current_user: dict = Depends(get_current_user)):
+    """Get Hoyanger wise accounts data with live BTC conversions"""
+    try:
+        # Connect to MySQL database directly
+        conn = mysql.connector.connect(
+            host='10.1.8.51',
+            user='s42project',
+            password='9JA_)j(WSqJUJ9Y]',
+            database='nocodb',
+            port=3306
+        )
+        cursor = conn.cursor(dictionary=True)
+
+        # Get Hoyanger wise accounts ordered by currency
+        cursor.execute("SELECT * FROM `wise_accounts` WHERE `name` LIKE '%hoyanger%' ORDER BY `currency` ASC")
+        accounts_data = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        # Fetch live BTC exchange rates
+        try:
+            # Using CoinGecko API for live rates
+            response = requests.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=gbp,nok,usd', timeout=5)
+            if response.status_code == 200:
+                rates_data = response.json()
+                btc_rates = {
+                    'GBP': rates_data['bitcoin']['gbp'],
+                    'NOK': rates_data['bitcoin']['nok'],
+                    'USD': rates_data['bitcoin']['usd']
+                }
+            else:
+                # Fallback to cached rates if API fails
+                btc_rates = {
+                    'GBP': 55000,
+                    'NOK': 650000,
+                    'USD': 60000
+                }
+        except Exception as e:
+            print(f"Error fetching live rates: {e}")
+            # Fallback to cached rates
+            btc_rates = {
+                'GBP': 55000,
+                'NOK': 650000,
+                'USD': 60000
+            }
+
+        # Process accounts and calculate conversions
+        processed_accounts = []
+        total_btc = 0
+
+        for account in accounts_data:
+            account_dict = {}
+            for key, value in account.items():
+                if hasattr(value, 'isoformat'):  # Handle date/datetime objects
+                    account_dict[key] = value.isoformat()
+                elif isinstance(value, Decimal):  # Handle Decimal objects
+                    account_dict[key] = float(value)
+                else:
+                    account_dict[key] = value
+
+            # Track BTC amounts for conversion
+            if account_dict.get('currency') == 'BTC':
+                amount_value = account_dict.get('amount_value', 0)
+                if amount_value:
+                    total_btc += float(amount_value)
+
+            processed_accounts.append(account_dict)
+
+        # Calculate conversions using live rates
+        conversions = {
+            'total_btc': total_btc,
+            'btc_to_gbp': total_btc * btc_rates['GBP'],
+            'btc_to_nok': total_btc * btc_rates['NOK'],
+            'btc_to_usd': total_btc * btc_rates['USD'],
+            'rates_source': 'live' if 'rates_data' in locals() else 'cached',
+            'rates_timestamp': datetime.now().isoformat()
+        }
+
+        return JSONResponse(content={
+            "accounts": processed_accounts,
+            "conversions": conversions,
+            "summary": {
+                "total_accounts": len(processed_accounts),
+                "total_btc_amount": total_btc,
+                "currencies": list(set(account.get('currency') for account in processed_accounts if account.get('currency')))
+            }
+        })
+
+    except mysql.connector.Error as e:
+        return JSONResponse(
+            content={"error": f"Database error: {str(e)}"},
+            status_code=500
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
