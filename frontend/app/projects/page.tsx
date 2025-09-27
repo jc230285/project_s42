@@ -530,14 +530,14 @@ function ProjectsPageContent() {
   // Fetch plots data when selected plot IDs change
   useEffect(() => {
     console.log('selectedPlotIds changed:', selectedPlotIds);
-    if (selectedPlotIds.length > 0) {
+    if (selectedPlotIds.length > 0 && session) {
       console.log('Calling fetchPlotsData with:', selectedPlotIds);
       fetchPlotsData();
     } else {
-      console.log('No plots selected, clearing plotsData');
+      console.log('No plots selected or no session, clearing plotsData');
       setPlotsData(null);
     }
-  }, [selectedPlotIds]);
+  }, [selectedPlotIds, session]);
 
   if (status === "loading") {
     return (

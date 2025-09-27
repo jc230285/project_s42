@@ -14,6 +14,26 @@ interface SchemaField {
   "subcategory_order": number;
 }
 
+// Comments interfaces
+interface Comment {
+  id: string;
+  comment: string;
+  created_by_email: string;
+  created_at?: string;
+  table_name: string;
+  record_id: string;
+}
+
+interface CommentsResponse {
+  success: boolean;
+  comments: {
+    list: Comment[];
+  };
+  table_name: string;
+  record_id: string;
+  source: string;
+}
+
 // Helper functions for cookie management
 const getCookieValue = (name: string): string | null => {
   if (typeof document === 'undefined') return null;
@@ -170,12 +190,12 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
         ) : (
           <div 
             onClick={() => setIsEditing(true)}
-            className={`text-sm cursor-pointer hover:bg-accent/50 rounded px-2 py-1 transition-colors ${
+            className={`text-sm cursor-pointer hover:bg-accent/50 rounded px-2 py-1 transition-colors whitespace-pre-wrap break-words ${
               isProjectField ? 'text-green-700' : 'text-blue-700'
             }`}
           >
             {fieldValue !== null && fieldValue !== undefined && String(fieldValue).trim() !== '' ? (
-              <span className="font-medium">
+              <span className="font-medium whitespace-pre-wrap break-words">
                 {String(fieldValue)}
               </span>
             ) : (
@@ -287,11 +307,10 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   return (
     <>
       <div 
-        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors overflow-hidden break-words"
+        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors overflow-auto whitespace-pre-wrap break-words"
         style={{ 
           minHeight: `${calculatedHeight}px`,
-          wordBreak: 'break-word',
-          overflowWrap: 'anywhere'
+          wordBreak: 'break-word'
         }}
         data-field-id={field["Field ID"]}
         data-field-type={field.Type}
@@ -306,14 +325,13 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
         <div className="text-xs text-muted-foreground">
           {fieldValue ? (
             <div className="prose prose-sm max-w-none prose-invert">
-              <div 
-                className="break-words overflow-wrap-anywhere hyphens-auto leading-relaxed text-wrap overflow-hidden max-h-32"
-                style={{ 
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere',
-                  whiteSpace: 'normal'
+              <div
+                className="whitespace-pre-wrap break-words break-all hyphens-auto leading-relaxed overflow-auto max-h-64 pr-1"
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
                 }}
-                dangerouslySetInnerHTML={{ __html: fieldValue }} 
+                dangerouslySetInnerHTML={{ __html: fieldValue }}
               />
             </div>
           ) : (
@@ -460,6 +478,137 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
   onToggleSubcategory
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { data: session } = useSession();
+  
+  // Comments state
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [showAddCommentModal, setShowAddCommentModal] = useState(false);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [addingComment, setAddingComment] = useState(false);
+
+  // Helper function to make authenticated requests
+  const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
+    if (!session?.user?.email) {
+      throw new Error('No session available');
+    }
+
+    const userInfo = {
+      email: session.user.email,
+      name: session.user.name || session.user.email,
+      image: session.user.image || ''
+    };
+
+    const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+    });
+  };
+
+  // Fetch comments for both project and plot
+  const fetchComments = async () => {
+    if (!session) return;
+    
+    setCommentsLoading(true);
+    try {
+      const allComments: Comment[] = [];
+
+      // Fetch project comments if parent project exists
+      if (parentProject) {
+        try {
+          const response = await makeAuthenticatedRequest(
+            `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/projects/${parentProject._db_id}/comments`
+          );
+          if (response.ok) {
+            const data: CommentsResponse = await response.json();
+            if (data.comments?.list) {
+              allComments.push(...data.comments.list.map(comment => ({
+                ...comment,
+                table_name: 'projects'
+              })));
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching project comments:', error);
+        }
+      }
+
+      // Fetch plot comments
+      try {
+        const response = await makeAuthenticatedRequest(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/plots/${plot.id}/comments`
+        );
+        if (response.ok) {
+          const data: CommentsResponse = await response.json();
+          if (data.comments?.list) {
+            allComments.push(...data.comments.list.map(comment => ({
+              ...comment,
+              table_name: 'plots'
+            })));
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching plot comments:', error);
+      }
+
+      // Sort comments by date (newest first)
+      allComments.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      setComments(allComments);
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      toast.error('Failed to load comments');
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  // Add new comment
+  const addComment = async (tableName: 'projects' | 'plots', recordId: number) => {
+    if (!newCommentText.trim() || addingComment) return;
+
+    setAddingComment(true);
+    try {
+      const response = await makeAuthenticatedRequest(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/${tableName}/${recordId}/comments`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ comment: newCommentText.trim() })
+        }
+      );
+
+      if (response.ok) {
+        setNewCommentText('');
+        setShowAddCommentModal(false);
+        toast.success('Comment added successfully');
+        // Refresh comments
+        await fetchComments();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || 'Failed to add comment');
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      toast.error('Failed to add comment');
+    } finally {
+      setAddingComment(false);
+    }
+  };
+
+  // Load comments when component mounts
+  useEffect(() => {
+    fetchComments();
+  }, [plot.id, parentProject?._db_id, session]);
 
   // Combine and sort all fields by category order - both plot and project fields together
   const plotFields = schema.filter(field => field.Table === "Land Plots, Sites");
@@ -567,6 +716,66 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
             </span>
           )}
         </div>
+      </div>
+
+      {/* Comments Section - Always visible at top */}
+      <div className="mb-4 p-3 bg-muted/20 rounded-lg border border-border/20">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            Comments ({comments.length})
+          </h4>
+          <button
+            onClick={() => setShowAddCommentModal(true)}
+            className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors"
+          >
+            + Add Comment
+          </button>
+        </div>
+
+        {commentsLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+            <span className="ml-2 text-xs text-muted-foreground">Loading comments...</span>
+          </div>
+        ) : comments.length === 0 ? (
+          <div className="text-center py-4 text-muted-foreground">
+            <p className="text-xs">No comments yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2 h-[400px] overflow-y-auto">
+            {comments.map((comment) => (
+              <div key={comment.id} className="bg-background/60 rounded p-2 border border-border/10">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-medium text-foreground">
+                        {comment.created_by_email}
+                      </span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                        comment.table_name === 'projects' 
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                          : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      }`}>
+                        {comment.table_name === 'projects' ? 'Project' : 'Plot'}
+                      </span>
+                      {comment.created_at && (
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(comment.created_at).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-foreground leading-relaxed">
+                      {comment.comment}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Grouped Fields with Collapsible Categories and Subcategories */}
@@ -714,6 +923,94 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
             );
           })}
       </div>
+
+      {/* Add Comment Modal */}
+      {showAddCommentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowAddCommentModal(false)}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-background rounded-lg shadow-xl border border-border p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Add Comment</h3>
+              <button
+                onClick={() => setShowAddCommentModal(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Comment for:
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => addComment('plots', plot.id)}
+                    disabled={addingComment}
+                    className="flex-1 bg-blue-100 text-blue-800 px-3 py-2 rounded text-sm hover:bg-blue-200 disabled:opacity-50"
+                  >
+                    Plot {String(plot.id).padStart(3, '0')}
+                  </button>
+                  {parentProject && (
+                    <button
+                      onClick={() => addComment('projects', parentProject._db_id)}
+                      disabled={addingComment}
+                      className="flex-1 bg-green-100 text-green-800 px-3 py-2 rounded text-sm hover:bg-green-200 disabled:opacity-50"
+                    >
+                      Project {String(parentProject._db_id).padStart(3, '0')}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Comment:
+                </label>
+                <textarea
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  placeholder="Enter your comment..."
+                  className="w-full p-3 border border-border rounded-md bg-background text-foreground resize-none"
+                  rows={4}
+                  disabled={addingComment}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowAddCommentModal(false)}
+                  className="flex-1 px-4 py-2 text-sm border border-border rounded hover:bg-muted"
+                  disabled={addingComment}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    // Default to plot comment if no specific selection
+                    if (parentProject) {
+                      // Show options in modal
+                    } else {
+                      addComment('plots', plot.id);
+                    }
+                  }}
+                  disabled={!newCommentText.trim() || addingComment}
+                  className="flex-1 bg-primary text-primary-foreground px-4 py-2 rounded text-sm hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {addingComment ? 'Adding...' : 'Add Comment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
