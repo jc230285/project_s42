@@ -63,6 +63,7 @@ interface ProcessedProject {
 interface ProcessedPlot {
   id: number;
   plot_id: string;
+  parent_project_id?: number; // link to parent project id from backend
   fields: PlotField[];
   basic_data?: any; // Raw plot data from backend
 }
@@ -388,6 +389,7 @@ function ProjectsPageContent() {
                 transformedData.plots.push({
                   id: plot._db_id,
                   plot_id: `S${String(plot._db_id).padStart(3, '0')}`,
+                  parent_project_id: project._db_id,
                   fields: [], // Will be populated if needed
                   basic_data: plot.values
                 });
@@ -639,9 +641,11 @@ function ProjectsPageContent() {
                         }
 
                         return plotsData.plots.map((plot) => {
-                          const parentProject = plotsData.projects.length > 0 ? {
-                            _db_id: plotsData.projects[0].id,
-                            values: plotsData.projects[0].basic_data
+                          // Resolve the correct parent project per plot using stored parent_project_id
+                          const matchingProject = plotsData.projects.find(p => p.id === (plot as any).parent_project_id);
+                          const parentProject = matchingProject ? {
+                            _db_id: matchingProject.id,
+                            values: matchingProject.basic_data
                           } : undefined;
 
                           return (

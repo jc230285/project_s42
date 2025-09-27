@@ -939,14 +939,24 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
         }
         
         # -------------------------
-        # 2) DB CONNECT & HELPER FUNCTIONS
+        # 2) FETCH DATA FROM NOCODB (no direct SQL)
         # -------------------------
-        DB_TABLES = {"Projects": "Projects", "Land Plots, Sites": "LandPlots"}
-        
-        def normalize_schema_name(name: str) -> str:
-            """Normalize a schema 'Field Name' into a DB-like column key (lowercase)."""
+        nocodb_api_url = os.getenv("NOCODB_API_URL")
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        headers = {"xc-token": api_token, "Content-Type": "application/json"}
+
+        # Known table IDs (used elsewhere for updates)
+        PROJECTS_TABLE_ID = "mftsk8hkw23m8q1"
+        LANDPLOTS_TABLE_ID = "mmqclkrvx9lbtpc"
+
+        plots: list[dict] = []
+        projects_fk_set: set[int] = set()
+
+        # Helper to map a NocoDB record to FieldID->value dict using schema
+        def _normalize_key(name: str) -> str:
             return (
-                name.replace(" ", "_")
+                (name or "")
+                .replace(" ", "_")
                 .replace("-", "_")
                 .replace("/", "_")
                 .replace("(", "")
@@ -957,117 +967,145 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
                 .strip("_")
                 .lower()
             )
-        
-        def make_colmap(cursor, table_name: str):
-            """Return mapping: normalized_lower_name -> actual DB column name."""
-            cursor.execute(f"SHOW COLUMNS FROM `{table_name}`")
-            m = {}
-            for row in cursor.fetchall():
-                col = row["Field"]
-                m[col.lower()] = col                           # raw lowercase
-                m[normalize_schema_name(col)] = col            # normalized lowercase
-            return m
-        
-        def find_db_col(colmap: dict, schema_field_name: str):
-            """Find actual DB column for a schema field name."""
-            key1 = schema_field_name.lower()
-            key2 = normalize_schema_name(schema_field_name)
-            return colmap.get(key1) or colmap.get(key2)
-        
-        def ordered_values_for_row(row: dict, table_name: str, schema_fields_sorted: list, colmap: dict):
-            """Build an OrderedDict of FieldID -> value for the given DB row."""
-            result = OrderedDict()
-            for f in schema_fields_sorted:
-                if f["Table"] != table_name:
+
+        def map_values_by_field_id(record: dict, schema_fields: list[dict]) -> dict:
+            vals = OrderedDict()
+            # Build a case-insensitive lookup for record keys as fallback
+            rec_lower = {str(k).lower(): k for k in (record.keys() if isinstance(record, dict) else [])}
+            rec_norm = {_normalize_key(str(k)): k for k in (record.keys() if isinstance(record, dict) else [])}
+            for f in schema_fields:
+                field_id = f.get("Field ID")
+                field_name = f.get("Field Name") or ""
+                val = None
+                if isinstance(record, dict):
+                    if field_id in record:
+                        val = record.get(field_id)
+                    elif field_name in record:
+                        val = record.get(field_name)
+                    else:
+                        # try lower and normalized keys
+                        k1 = rec_lower.get(str(field_name).lower())
+                        if k1 is not None:
+                            val = record.get(k1)
+                        else:
+                            k2 = rec_norm.get(_normalize_key(field_name))
+                            if k2 is not None:
+                                val = record.get(k2)
+                vals[field_id] = val
+            return dict(vals)
+
+        # 2a) Load selected land plot rows directly from NocoDB
+        for pid in selected_plot_ids:
+            try:
+                url = f"{nocodb_api_url}/api/v2/tables/{LANDPLOTS_TABLE_ID}/records/{pid}"
+                r = requests.get(url, headers=headers, verify=False)
+                if r.status_code != 200:
+                    # Skip missing plots instead of failing entire request
                     continue
-                field_id = f["Field ID"]
-                db_col = find_db_col(colmap, f["Field Name"])
-                val = row.get(db_col) if db_col and db_col in row else None
-                result[field_id] = val
-            return result
-        
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "10.1.8.51"),
-            user=os.getenv("DB_USER", "s42project"),
-            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
-            database=os.getenv("DB_NAME", "nocodb"),
-            port=int(os.getenv("DB_PORT", "3306")),
-        )
-        cursor = conn.cursor(dictionary=True)
-        
-        # Column maps
-        colmap_projects = make_colmap(cursor, DB_TABLES["Projects"])
-        colmap_landplots = make_colmap(cursor, DB_TABLES["Land Plots, Sites"])
-        
-        # -------------------------
-        # 3) LOAD SELECTED LAND PLOTS
-        # -------------------------
-        if selected_plot_ids:
-            placeholders = ",".join(["%s"] * len(selected_plot_ids))
-            cursor.execute(f"SELECT * FROM `{DB_TABLES['Land Plots, Sites']}` WHERE id IN ({placeholders})", selected_plot_ids)
-        else:
-            cursor.execute(f"SELECT * FROM `{DB_TABLES['Land Plots, Sites']}`")
-        
-        plot_rows = cursor.fetchall() or []
-        
-        # Build plot objects with ordered values
-        plots = []
-        for r in plot_rows:
-            values = ordered_values_for_row(
-                r,
-                "Land Plots, Sites",
-                schema_by_table["Land Plots, Sites"],
-                colmap_landplots,
-            )
-            
-            # Find the project FK column
-            fk_project_id = None
-            for possible_col in ["projects_id", "Projects_id", "project_id", "ProjectID"]:
-                if possible_col in r:
-                    fk_project_id = r[possible_col]
-                    break
-            
-            plots.append({
-                "_db_id": r.get("id"),
-                "_fk_projects_id": fk_project_id,
-                "values": dict(values)  # Convert OrderedDict to regular dict for JSON serialization
-            })
-        
-        # -------------------------
-        # 4) FIGURE OUT PROJECT IDS FROM THOSE PLOTS
-        # -------------------------
-        project_ids = sorted({p["_fk_projects_id"] for p in plots if p["_fk_projects_id"] is not None})
-        projects = []
-        
-        if project_ids:
-            placeholders = ",".join(["%s"] * len(project_ids))
-            cursor.execute(f"SELECT * FROM `{DB_TABLES['Projects']}` WHERE id IN ({placeholders})", project_ids)
-            proj_rows = cursor.fetchall() or []
-            
-            # Group plots by FK
-            plots_by_pid = {}
+                row = r.json() or {}
+
+                # Determine FK to project from common patterns and relation payloads
+                fk_project_id = None
+                for key in [
+                    # explicit NocoDB Field ID for Projects_id (provided)
+                    "chap8h7mt25wqlp",
+                    # common column name variants
+                    "projects_id", "Projects_id", "project_id", "ProjectID",
+                    # relation payload variants
+                    "project", "Project", "Projects"
+                ]:
+                    if key in row:
+                        val = row.get(key)
+                        # If relation is an array/dict, extract id
+                        if isinstance(val, dict) and "id" in val:
+                            val = val.get("id")
+                        elif isinstance(val, list) and val and isinstance(val[0], dict) and "id" in val[0]:
+                            val = val[0].get("id")
+                        # Normalize to int if numeric
+                        if isinstance(val, (int, str)) and str(val).isdigit():
+                            fk_project_id = int(val)
+                            break
+
+                # Fallback A: try via schema-mapped values using the field ID
+                if fk_project_id is None:
+                    try:
+                        tmp_values = map_values_by_field_id(row, schema_by_table["Land Plots, Sites"])
+                        v = tmp_values.get("chap8h7mt25wqlp")
+                        if isinstance(v, (int, str)) and str(v).isdigit():
+                            fk_project_id = int(v)
+                    except Exception:
+                        pass
+
+                # Fallback B: case-insensitive and normalized key lookup for Projects_id
+                if fk_project_id is None and isinstance(row, dict):
+                    row_lower = {str(k).lower(): k for k in row.keys()}
+                    row_norm = {_normalize_key(str(k)): k for k in row.keys()}
+                    for probe in ["projects_id", "project_id", "project", "projects"]:
+                        k = row_lower.get(probe) or row_norm.get(_normalize_key(probe))
+                        if k is not None:
+                            val = row.get(k)
+                            if isinstance(val, dict) and "id" in val:
+                                val = val.get("id")
+                            elif isinstance(val, list) and val and isinstance(val[0], dict) and "id" in val[0]:
+                                val = val[0].get("id")
+                            if isinstance(val, (int, str)) and str(val).isdigit():
+                                fk_project_id = int(val)
+                                break
+
+                # Fallback C: query NocoDB for just the FK field if still missing
+                if fk_project_id is None:
+                    try:
+                        url2 = (
+                            f"{nocodb_api_url}/api/v2/tables/{LANDPLOTS_TABLE_ID}/records"
+                            f"?where=(id,eq,{pid})&fields=id,chap8h7mt25wqlp&limit=1"
+                        )
+                        r2 = requests.get(url2, headers=headers, verify=False)
+                        if r2.status_code == 200:
+                            data2 = r2.json() or {}
+                            lst = data2.get("list") if isinstance(data2, dict) else None
+                            if isinstance(lst, list) and lst:
+                                v = lst[0].get("chap8h7mt25wqlp")
+                                if isinstance(v, (int, str)) and str(v).isdigit():
+                                    fk_project_id = int(v)
+                    except Exception:
+                        pass
+
+                plot_obj = {
+                    "_db_id": row.get("id", pid),
+                    "_fk_projects_id": fk_project_id,
+                    "values": map_values_by_field_id(row, schema_by_table["Land Plots, Sites"]) 
+                }
+                plots.append(plot_obj)
+                if fk_project_id is not None:
+                    projects_fk_set.add(fk_project_id)
+            except Exception:
+                # Continue with other plots; errors on one shouldn't break the batch
+                continue
+
+        # 2b) Load projects for the collected FK ids and attach their plots
+        projects: list[dict] = []
+        if projects_fk_set:
+            plots_by_pid: dict[int, list[dict]] = {}
             for p in plots:
-                pid = p["_fk_projects_id"]
+                pid = p.get("_fk_projects_id")
                 if pid is not None:
                     plots_by_pid.setdefault(pid, []).append(p)
-            
-            # Build project objects with only their own plots
-            for r in proj_rows:
-                values = ordered_values_for_row(
-                    r,
-                    "Projects",
-                    schema_by_table["Projects"],
-                    colmap_projects,
-                )
-                pid = r.get("id")
-                projects.append({
-                    "_db_id": pid,
-                    "values": dict(values),  # Convert OrderedDict to regular dict for JSON serialization
-                    "plots": plots_by_pid.get(pid, [])
-                })
-        
-        cursor.close()
-        conn.close()
+
+            for proj_id in sorted(projects_fk_set):
+                try:
+                    url = f"{nocodb_api_url}/api/v2/tables/{PROJECTS_TABLE_ID}/records/{proj_id}"
+                    r = requests.get(url, headers=headers, verify=False)
+                    if r.status_code != 200:
+                        continue
+                    prow = r.json() or {}
+                    project_obj = {
+                        "_db_id": prow.get("id", proj_id),
+                        "values": map_values_by_field_id(prow, schema_by_table["Projects"]),
+                        "plots": plots_by_pid.get(proj_id, [])
+                    }
+                    projects.append(project_obj)
+                except Exception:
+                    continue
         
         # -------------------------
         # 5) OUTPUT (schema first, then data)
@@ -1081,7 +1119,7 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
                 "total_plots": len(plots),
                 "requested_plot_ids": selected_plot_ids,
                 "found_plot_ids": [p["_db_id"] for p in plots],
-                "projects_found": project_ids
+                "projects_found": sorted(list(projects_fk_set))
             }
         }
         
@@ -1095,7 +1133,7 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
                 "total_plots": len(plots),
                 "requested_plot_ids": selected_plot_ids,
                 "found_plot_ids": [p["_db_id"] for p in plots],
-                "projects_found": project_ids
+                "projects_found": sorted(list(projects_fk_set))
             }
         }
         
