@@ -2,6 +2,7 @@
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 from pydantic import BaseModel
 import mysql.connector
 import requests
@@ -2143,11 +2144,11 @@ def get_companies_data(current_user: dict = Depends(get_current_user)):
     try:
         # Connect to MySQL database directly
         conn = mysql.connector.connect(
-            host='10.1.8.51',
-            user='s42project',
-            password='9JA_)j(WSqJUJ9Y]',
-            database='nocodb',
-            port=3306
+            host=os.getenv("DB_HOST", "10.1.8.51"),
+            user=os.getenv("DB_USER", "s42project"),
+            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            database=os.getenv("DB_NAME", "nocodb"),
+            port=int(os.getenv("DB_PORT", "3306")),
         )
         cursor = conn.cursor(dictionary=True)
 
@@ -2212,11 +2213,11 @@ def get_hoyanger_wise_accounts(current_user: dict = Depends(get_current_user)):
     try:
         # Connect to MySQL database directly
         conn = mysql.connector.connect(
-            host='10.1.8.51',
-            user='s42project',
-            password='9JA_)j(WSqJUJ9Y]',
-            database='nocodb',
-            port=3306
+            host=os.getenv("DB_HOST", "10.1.8.51"),
+            user=os.getenv("DB_USER", "s42project"),
+            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            database=os.getenv("DB_NAME", "nocodb"),
+            port=int(os.getenv("DB_PORT", "3306")),
         )
         cursor = conn.cursor(dictionary=True)
 
@@ -2304,5 +2305,760 @@ def get_hoyanger_wise_accounts(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse(
             content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
+
+@app.get("/nocodb/{table_name}/{record_id}/comments", tags=["nocodb"])
+def get_nocodb_comments(table_name: str, record_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Get comments for a specific record using NocoDB v1 API.
+    """
+    print(f"DEBUG: get_nocodb_comments called with table_name={table_name}, record_id={record_id}")
+    try:
+        # Get user-specific NocoDB token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
+                    user_token = user_data['nocodb_api']
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+
+        if not api_token:
+            return JSONResponse(content={"error": "No API token available"}, status_code=500)
+
+        # Get table ID based on table_name
+        table_id_map = {
+            "projects": os.getenv("NOCODB_PROJECTS_TABLE_ID", "mftsk8hkw23m8q1"),
+            "plots": os.getenv("NOCODB_PLOTS_TABLE_ID", "mmqclkrvx9lbtpc")
+        }
+        table_id = table_id_map.get(table_name)
+        if not table_id:
+            return JSONResponse(content={"error": f"Unknown table name: {table_name}"}, status_code=400)
+
+        # NocoDB v1 API endpoint for comments
+        nocodb_url = os.getenv("NOCODB_API_URL")
+        api_url = f"{nocodb_url}/api/v1/db/meta/comments"
+
+        # Set up headers for NocoDB v1 API
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token,  # v1 API uses xc-token header
+            "xc-gui": "true"
+        }
+
+        # Parameters for getting comments
+        params = {
+            "row_id": record_id,
+            "fk_model_id": table_id
+        }
+
+        # Make request to NocoDB v1 API
+        response = requests.get(api_url, headers=headers, params=params, verify=False)
+
+        if response.status_code == 200:
+            comments_data = response.json()
+            return JSONResponse(content={
+                "success": True,
+                "comments": comments_data,
+                "table_name": table_name,
+                "record_id": record_id,
+                "source": "NocoDB v1 API"
+            })
+        else:
+            return JSONResponse(content={
+                "error": f"NocoDB v1 API error: {response.status_code}",
+                "message": response.text,
+                "url": api_url
+            }, status_code=response.status_code)
+
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.get("/nocodb/{table_name}/{record_id}/audit", tags=["nocodb"])
+def get_nocodb_audit_trail(table_name: str, record_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Get audit trail for a specific record.
+    Note: NocoDB v2 API does not support audit trail functionality.
+    This endpoint returns an informative message about the limitation.
+    """
+    return JSONResponse(content={
+        "error": "Audit trail feature not available",
+        "message": "NocoDB v2 API does not support audit trail functionality. Consider using NocoDB webhooks or implementing audit logging in your application.",
+        "table_name": table_name,
+        "record_id": record_id,
+        "suggestion": "Use NocoDB webhooks to capture changes, or create an audit table with fields: record_id, action, old_value, new_value, user_id, timestamp",
+        "alternative_approach": "Set up NocoDB webhooks to POST change events to your application for audit logging"
+    })
+
+
+# Pydantic model for comment creation
+class CommentCreate(BaseModel):
+    comment: str
+
+# Pydantic models for comments table
+class CommentRecord(BaseModel):
+    id: Optional[int] = None
+    record_id: str
+    table_name: str
+    comment_text: str
+    user_id: str
+    user_email: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+# Pydantic models for audit table
+class AuditRecord(BaseModel):
+    id: Optional[int] = None
+    record_id: str
+    table_name: str
+    action: str  # CREATE, UPDATE, DELETE
+    old_values: Optional[dict] = None
+    new_values: Optional[dict] = None
+    user_id: str
+    user_email: str
+    timestamp: Optional[datetime] = None
+    field_changed: Optional[str] = None
+
+@app.post("/nocodb/{table_name}/{record_id}/comments", tags=["nocodb"])
+def create_nocodb_comment(table_name: str, record_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Create a comment for a specific record using NocoDB v1 API.
+    """
+    try:
+        # Get user-specific NocoDB token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
+                    user_token = user_data['nocodb_api']
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+
+        if not api_token:
+            return JSONResponse(content={"error": "No API token available"}, status_code=500)
+
+        # Get table ID based on table_name
+        table_id_map = {
+            "projects": os.getenv("NOCODB_PROJECTS_TABLE_ID", "mftsk8hkw23m8q1"),
+            "plots": os.getenv("NOCODB_PLOTS_TABLE_ID", "mmqclkrvx9lbtpc")
+        }
+        table_id = table_id_map.get(table_name)
+        if not table_id:
+            return JSONResponse(content={"error": f"Unknown table name: {table_name}"}, status_code=400)
+
+        # NocoDB v1 API endpoint for comments
+        nocodb_url = os.getenv("NOCODB_API_URL")
+        api_url = f"{nocodb_url}/api/v1/db/meta/comments"
+
+        # Set up headers for NocoDB v1 API
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token,  # v1 API uses xc-token header
+            "xc-gui": "true"
+        }
+
+        # Data for creating comment
+        comment_payload = {
+            "fk_model_id": table_id,
+            "row_id": record_id,
+            "comment": comment_data.comment
+        }
+
+        # Make request to NocoDB v1 API
+        response = requests.post(api_url, headers=headers, json=comment_payload, verify=False)
+
+        if response.status_code == 200:
+            comment_result = response.json()
+            return JSONResponse(content={
+                "success": True,
+                "comment": comment_result,
+                "table_name": table_name,
+                "record_id": record_id,
+                "source": "NocoDB v1 API"
+            })
+        else:
+            return JSONResponse(content={
+                "error": f"NocoDB v1 API error: {response.status_code}",
+                "message": response.text,
+                "url": api_url
+            }, status_code=response.status_code)
+
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# ===== COMMENTS MANAGEMENT ENDPOINTS =====
+
+@app.get("/comments/{table_name}/{record_id}", tags=["comments"])
+def get_comments(table_name: str, record_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all comments for a specific record from the comments table"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+        print(f"🔑 Getting API token for user: {user_email}")
+
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
+                    user_token = user_data['nocodb_api']
+                    print(f"✅ Using user-specific NocoDB token")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        # Get comments table ID from environment
+        comments_table_id = os.getenv("NOCODB_COMMENTS_TABLE_ID")
+        if not comments_table_id:
+            return JSONResponse(
+                content={"error": "NOCODB_COMMENTS_TABLE_ID environment variable not set. Please create a comments table in NocoDB first."},
+                status_code=500
+            )
+        
+        # Validate required environment variables
+        nocodb_api_url = os.getenv("NOCODB_API_URL")
+        if not nocodb_api_url:
+            return JSONResponse(
+                content={"error": "NOCODB_API_URL environment variable not set"},
+                status_code=500
+            )
+        if not api_token:
+            return JSONResponse(
+                content={"error": "No API token available"},
+                status_code=500
+            )
+        
+        # Construct NocoDB API v2 URL for comments table with filter
+        api_url = f"{nocodb_api_url}/api/v2/tables/{comments_table_id}/records"
+        
+        # Set up headers for NocoDB API
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+        
+        # Filter for comments on this specific record and table
+        params = {
+            "q": f"record_id={record_id} && table_name={table_name}",
+            "sort": "-created_at"  # Most recent first
+        }
+        
+        # Make request to NocoDB API
+        response = requests.get(api_url, headers=headers, params=params, verify=False)
+
+        if response.status_code != 200:
+            return JSONResponse(
+                content={
+                    "error": f"NocoDB API error: {response.status_code} - {response.text}",
+                    "url": api_url
+                },
+                status_code=response.status_code
+            )
+
+        # Parse and return the comments data
+        data = response.json()
+        comments = data.get("list", [])
+        
+        # Format the response
+        formatted_comments = []
+        for comment in comments:
+            formatted_comments.append({
+                "id": comment.get("Id"),  # NocoDB auto-generated ID
+                "record_id": comment.get("record_id"),
+                "table_name": comment.get("table_name"),
+                "comment_text": comment.get("comment_text"),
+                "user_id": comment.get("user_id"),
+                "user_email": comment.get("user_email"),
+                "created_at": comment.get("created_at"),
+                "updated_at": comment.get("updated_at")
+            })
+        
+        return JSONResponse(content={
+            "table": table_name,
+            "record_id": record_id,
+            "comments": formatted_comments,
+            "total_count": len(formatted_comments)
+        })
+
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.post("/comments/{table_name}/{record_id}", tags=["comments"])
+def create_comment(table_name: str, record_id: str, comment_data: CommentCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new comment for a specific record in the comments table"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+        user_id = current_user.get('id', 'unknown')
+        print(f"🔑 Getting API token for user: {user_email}")
+
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
+                    user_token = user_data['nocodb_api']
+                    print(f"✅ Using user-specific NocoDB token")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        # Get comments table ID from environment
+        comments_table_id = os.getenv("NOCODB_COMMENTS_TABLE_ID")
+        if not comments_table_id:
+            return JSONResponse(
+                content={"error": "NOCODB_COMMENTS_TABLE_ID environment variable not set. Please create a comments table in NocoDB first."},
+                status_code=500
+            )
+        
+        # Validate required environment variables
+        nocodb_api_url = os.getenv("NOCODB_API_URL")
+        if not nocodb_api_url:
+            return JSONResponse(
+                content={"error": "NOCODB_API_URL environment variable not set"},
+                status_code=500
+            )
+        if not api_token:
+            return JSONResponse(
+                content={"error": "No API token available"},
+                status_code=500
+            )
+        
+        # Construct NocoDB API v2 URL for creating comment
+        api_url = f"{nocodb_api_url}/api/v2/tables/{comments_table_id}/records"
+        
+        # Set up headers for NocoDB API
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+
+        # Prepare comment payload
+        payload = {
+            "record_id": record_id,
+            "table_name": table_name,
+            "comment_text": comment_data.comment,
+            "user_id": str(user_id),
+            "user_email": user_email or "unknown",
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+
+        # Make POST request to NocoDB API
+        response = requests.post(api_url, json=payload, headers=headers, verify=False)
+
+        if response.status_code not in [200, 201]:
+            return JSONResponse(
+                content={
+                    "error": f"NocoDB API error: {response.status_code} - {response.text}",
+                    "url": api_url
+                },
+                status_code=response.status_code
+            )
+
+        # Parse and return the response
+        data = response.json()
+        return JSONResponse(content={
+            "table": table_name,
+            "record_id": record_id,
+            "comment_created": {
+                "id": data.get("Id"),
+                "comment_text": comment_data.comment,
+                "user_email": user_email,
+                "created_at": payload["created_at"]
+            },
+            "success": True
+        })
+
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
+
+
+# ===== AUDIT TRAIL ENDPOINTS =====
+
+@app.get("/audit/{table_name}/{record_id}", tags=["audit"])
+def get_audit_trail(table_name: str, record_id: str, current_user: dict = Depends(get_current_user)):
+    """Get audit trail for a specific record from the audit table"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+        print(f"🔑 Getting API token for user: {user_email}")
+
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
+                    user_token = user_data['nocodb_api']
+                    print(f"✅ Using user-specific NocoDB token")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        # Get audit table ID from environment
+        audit_table_id = os.getenv("NOCODB_AUDIT_TABLE_ID")
+        if not audit_table_id:
+            return JSONResponse(
+                content={"error": "NOCODB_AUDIT_TABLE_ID environment variable not set. Please create an audit table in NocoDB first."},
+                status_code=500
+            )
+        
+        # Validate required environment variables
+        nocodb_api_url = os.getenv("NOCODB_API_URL")
+        if not nocodb_api_url:
+            return JSONResponse(
+                content={"error": "NOCODB_API_URL environment variable not set"},
+                status_code=500
+            )
+        if not api_token:
+            return JSONResponse(
+                content={"error": "No API token available"},
+                status_code=500
+            )
+        
+        # Construct NocoDB API v2 URL for audit table with filter
+        api_url = f"{nocodb_api_url}/api/v2/tables/{audit_table_id}/records"
+        
+        # Set up headers for NocoDB API
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+        
+        # Filter for audit entries on this specific record and table
+        params = {
+            "q": f"record_id={record_id} && table_name={table_name}",
+            "sort": "-timestamp"  # Most recent first
+        }
+        
+        # Make request to NocoDB API
+        response = requests.get(api_url, headers=headers, params=params, verify=False)
+
+        if response.status_code != 200:
+            return JSONResponse(
+                content={
+                    "error": f"NocoDB API error: {response.status_code} - {response.text}",
+                    "url": api_url
+                },
+                status_code=response.status_code
+            )
+
+        # Parse and return the audit data
+        data = response.json()
+        audit_entries = data.get("list", [])
+        
+        # Format the response
+        formatted_audit = []
+        for entry in audit_entries:
+            formatted_audit.append({
+                "id": entry.get("Id"),
+                "record_id": entry.get("record_id"),
+                "table_name": entry.get("table_name"),
+                "action": entry.get("action"),
+                "old_values": entry.get("old_values"),
+                "new_values": entry.get("new_values"),
+                "user_id": entry.get("user_id"),
+                "user_email": entry.get("user_email"),
+                "timestamp": entry.get("timestamp"),
+                "field_changed": entry.get("field_changed")
+            })
+        
+        return JSONResponse(content={
+            "table": table_name,
+            "record_id": record_id,
+            "audit_trail": formatted_audit,
+            "total_count": len(formatted_audit)
+        })
+
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
+
+
+@app.post("/audit/{table_name}/{record_id}", tags=["audit"])
+def create_audit_entry(table_name: str, record_id: str, audit_data: dict, current_user: dict = Depends(get_current_user)):
+    """Create a new audit entry for a specific record (typically called by webhooks or application logic)"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+        user_id = current_user.get('id', 'unknown')
+        print(f"🔑 Getting API token for user: {user_email}")
+
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
+                    user_token = user_data['nocodb_api']
+                    print(f"✅ Using user-specific NocoDB token")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        # Get audit table ID from environment
+        audit_table_id = os.getenv("NOCODB_AUDIT_TABLE_ID")
+        if not audit_table_id:
+            return JSONResponse(
+                content={"error": "NOCODB_AUDIT_TABLE_ID environment variable not set. Please create an audit table in NocoDB first."},
+                status_code=500
+            )
+        
+        # Validate required environment variables
+        nocodb_api_url = os.getenv("NOCODB_API_URL")
+        if not nocodb_api_url:
+            return JSONResponse(
+                content={"error": "NOCODB_API_URL environment variable not set"},
+                status_code=500
+            )
+        if not api_token:
+            return JSONResponse(
+                content={"error": "No API token available"},
+                status_code=500
+            )
+        
+        # Construct NocoDB API v2 URL for creating audit entry
+        api_url = f"{nocodb_api_url}/api/v2/tables/{audit_table_id}/records"
+        
+        # Set up headers for NocoDB API
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+
+        # Prepare audit payload
+        payload = {
+            "record_id": record_id,
+            "table_name": table_name,
+            "action": audit_data.get("action", "UPDATE"),
+            "old_values": audit_data.get("old_values"),
+            "new_values": audit_data.get("new_values"),
+            "user_id": str(user_id),
+            "user_email": user_email or "unknown",
+            "timestamp": datetime.now().isoformat(),
+            "field_changed": audit_data.get("field_changed")
+        }
+
+        # Make POST request to NocoDB API
+        response = requests.post(api_url, json=payload, headers=headers, verify=False)
+
+        if response.status_code not in [200, 201]:
+            return JSONResponse(
+                content={
+                    "error": f"NocoDB API error: {response.status_code} - {response.text}",
+                    "url": api_url
+                },
+                status_code=response.status_code
+            )
+
+        # Parse and return the response
+        data = response.json()
+        return JSONResponse(content={
+            "table": table_name,
+            "record_id": record_id,
+            "audit_entry_created": {
+                "id": data.get("Id"),
+                "action": payload["action"],
+                "user_email": user_email,
+                "timestamp": payload["timestamp"]
+            },
+            "success": True
+        })
+
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
+
+
+# ===== WEBHOOK ENDPOINTS FOR AUDIT TRAILS =====
+
+@app.post("/webhooks/nocodb/audit", tags=["webhooks"])
+async def nocodb_audit_webhook(request: Request):
+    """Webhook endpoint to receive NocoDB events and create audit entries"""
+    try:
+        # Get the webhook payload
+        payload = await request.json()
+        print(f"🔗 Received NocoDB webhook: {json.dumps(payload, indent=2)}")
+
+        # Extract relevant data from webhook
+        event_type = payload.get("type")  # AFTER_INSERT, AFTER_UPDATE, AFTER_DELETE
+        table_name = payload.get("data", {}).get("table_name")
+        record_data = payload.get("data", {}).get("row", {})
+
+        if not table_name or not record_data:
+            return JSONResponse(content={"status": "ignored", "reason": "Missing table_name or row data"})
+
+        # Map webhook event types to audit actions
+        action_map = {
+            "AFTER_INSERT": "CREATE",
+            "AFTER_UPDATE": "UPDATE",
+            "AFTER_DELETE": "DELETE"
+        }
+
+        action = action_map.get(event_type, "UNKNOWN")
+        if action == "UNKNOWN":
+            return JSONResponse(content={"status": "ignored", "reason": f"Unknown event type: {event_type}"})
+
+        # Get record ID (assuming 'Id' is the primary key)
+        record_id = str(record_data.get("Id", "unknown"))
+
+        # For updates, we need to compare old and new values
+        # This is a simplified version - in practice, you'd need to fetch the previous state
+        old_values = payload.get("data", {}).get("previous_row")
+        new_values = record_data
+
+        # Prepare audit data
+        audit_data = {
+            "action": action,
+            "old_values": old_values,
+            "new_values": new_values,
+            "field_changed": payload.get("data", {}).get("changed_columns", [])
+        }
+
+        # Get audit table ID from environment
+        audit_table_id = os.getenv("NOCODB_AUDIT_TABLE_ID")
+        if not audit_table_id:
+            print("⚠️  NOCODB_AUDIT_TABLE_ID not set, skipping audit entry")
+            return JSONResponse(content={"status": "skipped", "reason": "Audit table not configured"})
+
+        # Get API token (use environment token for webhooks)
+        api_token = os.getenv("NOCODB_API_TOKEN")
+        nocodb_api_url = os.getenv("NOCODB_API_URL")
+
+        if not api_token or not nocodb_api_url:
+            print("⚠️  NocoDB API credentials not set, skipping audit entry")
+            return JSONResponse(content={"status": "skipped", "reason": "API credentials not configured"})
+
+        # Create audit entry
+        api_url = f"{nocodb_api_url}/api/v2/tables/{audit_table_id}/records"
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+
+        audit_payload = {
+            "record_id": record_id,
+            "table_name": table_name,
+            "action": action,
+            "old_values": json.dumps(old_values) if old_values else None,
+            "new_values": json.dumps(new_values) if new_values else None,
+            "user_id": "webhook",  # Could be enhanced to track actual user
+            "user_email": "system@nocodb-webhook.com",
+            "timestamp": datetime.now().isoformat(),
+            "field_changed": json.dumps(audit_data.get("field_changed", []))
+        }
+
+        response = requests.post(api_url, json=audit_payload, headers=headers, verify=False)
+
+        if response.status_code in [200, 201]:
+            print(f"✅ Audit entry created for {table_name}/{record_id} - {action}")
+            return JSONResponse(content={"status": "success", "audit_entry_created": True})
+        else:
+            print(f"❌ Failed to create audit entry: {response.status_code} - {response.text}")
+            return JSONResponse(content={"status": "error", "reason": "Failed to create audit entry"})
+
+    except Exception as e:
+        print(f"❌ Webhook error: {str(e)}")
+        return JSONResponse(
+            content={"status": "error", "reason": str(e)},
             status_code=500
         )
