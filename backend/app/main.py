@@ -13,7 +13,11 @@ from decimal import Decimal
 from typing import Optional, Any
 from collections import OrderedDict
 import base64
+from dotenv import load_dotenv
 from . import nocodb_sync
+
+# Load environment variables from .env file
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
 # Disable SSL warnings for NocoDB API calls
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -2894,7 +2898,7 @@ def create_comment(table_name: str, record_id: str, comment_data: CommentCreate,
 
 @app.get("/audit/{table_name}/{record_id}", tags=["audit"])
 def get_audit_trail(table_name: str, record_id: str, current_user: dict = Depends(get_current_user)):
-    """Get audit trail for a specific record from the audit table"""
+    """Get audit trail for a specific record using NocoDB's built-in audit functionality"""
     try:
         # Get user's personal API token if available, otherwise use environment token
         user_token = None
@@ -2924,19 +2928,12 @@ def get_audit_trail(table_name: str, record_id: str, current_user: dict = Depend
         # Use user token if available, otherwise fall back to environment token
         api_token = user_token or os.getenv("NOCODB_API_TOKEN")
         
-        # Get audit table ID from environment
-        audit_table_id = os.getenv("NOCODB_AUDIT_TABLE_ID")
-        if not audit_table_id:
-            return JSONResponse(
-                content={"error": "NOCODB_AUDIT_TABLE_ID environment variable not set. Please create an audit table in NocoDB first."},
-                status_code=500
-            )
-        
         # Validate required environment variables
         nocodb_api_url = os.getenv("NOCODB_API_URL")
-        if not nocodb_api_url:
+        base_id = os.getenv("NOCODB_BASE_ID")
+        if not nocodb_api_url or not base_id:
             return JSONResponse(
-                content={"error": "NOCODB_API_URL environment variable not set"},
+                content={"error": "NOCODB_API_URL or NOCODB_BASE_ID environment variables not set"},
                 status_code=500
             )
         if not api_token:
@@ -2945,58 +2942,119 @@ def get_audit_trail(table_name: str, record_id: str, current_user: dict = Depend
                 status_code=500
             )
         
-        # Construct NocoDB API v2 URL for audit table with filter
-        api_url = f"{nocodb_api_url}/api/v2/tables/{audit_table_id}/records"
-        
-        # Set up headers for NocoDB API
-        headers = {
-            "xc-token": api_token,
-            "Content-Type": "application/json"
+        # Map table names to NocoDB table IDs
+        table_id_map = {
+            "projects": os.getenv("NOCODB_PROJECTS_TABLE_ID"),
+            "plots": os.getenv("NOCODB_PLOTS_TABLE_ID"),
+            "sites": os.getenv("NOCODB_PLOTS_TABLE_ID"),  # plots and sites are the same table
         }
         
-        # Filter for audit entries on this specific record and table
+        table_id = table_id_map.get(table_name.lower())
+        if not table_id:
+            return JSONResponse(
+                content={"error": f"Unknown table name: {table_name}. Supported: projects, plots, sites"},
+                status_code=400
+            )
+        
+        # Use NocoDB's internal audit API
+        audit_url = f"{nocodb_api_url}/api/v2/internal/nc/{base_id}"
         params = {
-            "q": f"record_id={record_id} && table_name={table_name}",
-            "sort": "-timestamp"  # Most recent first
+            'operation': 'recordAuditList',
+            'fk_model_id': table_id,
+            'row_id': record_id,
+            'cursor': ''
         }
         
-        # Make request to NocoDB API
-        response = requests.get(api_url, headers=headers, params=params, verify=False)
+        # Use admin token for internal audit API (requires elevated permissions)
+        admin_api_token = os.getenv("NOCODB_API_TOKEN")  # Admin token from environment
+        
+        headers = {
+            "xc-token": admin_api_token,
+            "xc-auth": admin_api_token,
+            "Content-Type": "application/json",
+            "xc-gui": "true"
+        }
+        
+        # Make request to NocoDB internal audit API
+        response = requests.get(audit_url, params=params, headers=headers, verify=False)
 
         if response.status_code != 200:
             return JSONResponse(
                 content={
-                    "error": f"NocoDB API error: {response.status_code} - {response.text}",
-                    "url": api_url
+                    "error": f"NocoDB audit API error: {response.status_code} - {response.text}",
+                    "url": audit_url
                 },
                 status_code=response.status_code
             )
 
-        # Parse and return the audit data
+        # Parse and format the audit data
         data = response.json()
         audit_entries = data.get("list", [])
         
-        # Format the response
+        # Format the response with user names from database
         formatted_audit = []
         for entry in audit_entries:
+            user_email = entry.get("user")
+            user_name = user_email  # Default to email
+            
+            # Try to get user name from database
+            if user_email:
+                try:
+                    # Query users table to get name
+                    conn = mysql.connector.connect(
+                        host=os.getenv("DB_HOST", "10.1.8.51"),
+                        user=os.getenv("DB_USER", "s42project"),
+                        password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                        database=os.getenv("DB_NAME", "nocodb"),
+                        port=int(os.getenv("DB_PORT", "3306")),
+                    )
+                    cursor = conn.cursor(dictionary=True)
+                    cursor.execute("SELECT name FROM users WHERE email = %s", (user_email,))
+                    user_data = cursor.fetchone()
+                    if user_data and isinstance(user_data, dict) and user_data.get('name'):
+                        user_name = user_data['name']
+                    cursor.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"Error fetching user name for {user_email}: {e}")
+            
+            # Parse the details field which contains old_data and new_data
+            details = entry.get("details", {})
+            old_data = None
+            new_data = None
+            
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except:
+                    details = {}
+            
+            if isinstance(details, dict):
+                old_data = details.get("old_data")
+                new_data = details.get("new_data")
+            
             formatted_audit.append({
-                "id": entry.get("Id"),
-                "record_id": entry.get("record_id"),
-                "table_name": entry.get("table_name"),
-                "action": entry.get("action"),
-                "old_values": entry.get("old_values"),
-                "new_values": entry.get("new_values"),
-                "user_id": entry.get("user_id"),
-                "user_email": entry.get("user_email"),
-                "timestamp": entry.get("timestamp"),
-                "field_changed": entry.get("field_changed")
+                "id": entry.get("id"),
+                "record_id": entry.get("row_id"),
+                "table_name": table_name,
+                "action": entry.get("op_type", "UPDATE"),
+                "old_values": old_data,
+                "new_values": new_data,
+                "details": entry.get("details"),  # Keep original details field
+                "user_id": None,  # Not provided in internal API
+                "user_email": user_email,
+                "user_name": user_name,
+                "timestamp": entry.get("created_at") or entry.get("updated_at"),
+                "ip_address": entry.get("ip"),
+                "description": entry.get("description")
             })
         
         return JSONResponse(content={
             "table": table_name,
             "record_id": record_id,
             "audit_trail": formatted_audit,
-            "total_count": len(formatted_audit)
+            "total_count": len(formatted_audit),
+            "source": "nocodb_internal_api"
         })
 
     except Exception as e:

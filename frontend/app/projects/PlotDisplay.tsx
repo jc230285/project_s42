@@ -19,6 +19,7 @@ interface Comment {
   id: string;
   comment: string;
   created_by_email: string;
+  created_by_name?: string;
   created_at?: string;
   table_name: string;
   record_id: string;
@@ -32,6 +33,29 @@ interface CommentsResponse {
   table_name: string;
   record_id: string;
   source: string;
+}
+
+// Audit interfaces
+interface AuditRecord {
+  id: string;
+  record_id: string;
+  table_name: string;
+  action: string;
+  old_values?: any;
+  new_values?: any;
+  user_id?: string;
+  user_email?: string;
+  user_name?: string;  // Add user name field
+  timestamp: string;
+  field_changed?: string;
+  details?: any;  // Add details field from NocoDB audit API
+}
+
+interface AuditResponse {
+  table: string;
+  record_id: string;
+  audit_trail: AuditRecord[];
+  total_count: number;
 }
 
 // Helper functions for cookie management
@@ -467,6 +491,11 @@ const SubcategoryHeader: React.FC<SubcategoryHeaderProps> = ({
   </div>
 );
 
+// Timeline item types
+type TimelineItem = 
+  | { type: 'comment'; data: Comment }
+  | { type: 'audit'; data: AuditRecord };
+
 export const PlotDisplay: React.FC<PlotDisplayProps> = ({ 
   plot, 
   parentProject, 
@@ -484,8 +513,16 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [showAddCommentModal, setShowAddCommentModal] = useState(false);
+
+  // Audit state
+  const [auditRecords, setAuditRecords] = useState<AuditRecord[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
   const [addingComment, setAddingComment] = useState(false);
+
+  // Combined timeline state
+  const [timelineItems, setTimelineItems] = useState<TimelineItem[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   // Helper function to make authenticated requests
   const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
@@ -509,6 +546,16 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
         'Content-Type': 'application/json',
       },
     });
+  };
+
+  // Helper function to format date as dd/mm/yyyy
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'Unknown';
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   // Fetch comments for both project and plot
@@ -573,7 +620,65 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
     }
   };
 
-  // Add new comment
+  // Fetch audit records for both project and plot
+  const fetchAudit = async () => {
+    try {
+      setAuditLoading(true);
+      const allAuditRecords: AuditRecord[] = [];
+
+      // Fetch project audit if parent project exists
+      if (parentProject) {
+        try {
+          const response = await makeAuthenticatedRequest(
+            `${process.env.NEXT_PUBLIC_BACKEND_URL}/audit/projects/${parentProject._db_id}`
+          );
+          if (response.ok) {
+            const data: AuditResponse = await response.json();
+            if (data.audit_trail) {
+              allAuditRecords.push(...data.audit_trail.map(record => ({
+                ...record,
+                table_name: 'projects'
+              })));
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching project audit:', error);
+        }
+      }
+
+      // Fetch plot audit
+      try {
+        const response = await makeAuthenticatedRequest(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL}/audit/plots/${plot.id}`
+        );
+        if (response.ok) {
+          const data: AuditResponse = await response.json();
+          if (data.audit_trail) {
+            allAuditRecords.push(...data.audit_trail.map(record => ({
+              ...record,
+              table_name: 'plots'
+            })));
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching plot audit:', error);
+      }
+
+      // Sort audit records by timestamp (newest first)
+      allAuditRecords.sort((a, b) => {
+        const dateA = new Date(a.timestamp).getTime();
+        const dateB = new Date(b.timestamp).getTime();
+        return dateB - dateA;
+      });
+
+      setAuditRecords(allAuditRecords);
+    } catch (error) {
+      console.error('Error fetching audit records:', error);
+      toast.error('Failed to load audit records');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
   const addComment = async (tableName: 'projects' | 'plots', recordId: number) => {
     if (!newCommentText.trim() || addingComment) return;
 
@@ -605,10 +710,73 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
     }
   };
 
-  // Load comments when component mounts
+  // Combine comments and audit records into timeline
+  const updateTimeline = () => {
+    // Filter audit records to only include those with valid changes
+    const validAuditRecords = auditRecords.filter(audit => {
+      if (!audit.details) return false;
+      
+      try {
+        const details = typeof audit.details === 'string' 
+          ? JSON.parse(audit.details) 
+          : audit.details;
+        const changedData = details.data || {};
+        const oldData = details.old_data || {};
+        
+        // Check if this audit record has any valid changes
+        const validEntries = Object.entries(changedData).filter(([field, value]) => {
+          if (value === null || value === undefined || String(value).trim() === '') {
+            return false;
+          }
+          const oldValue = oldData[field];
+          if (oldValue === null || oldValue === undefined || String(oldValue).trim() === '') {
+            return false; // Don't show initial field settings
+          }
+          const newValueStr = String(value).trim();
+          const oldValueStr = String(oldValue).trim();
+          return oldValueStr !== newValueStr; // Only show actual changes
+        });
+        
+        return validEntries.length > 0;
+      } catch (error) {
+        return false; // Exclude audit records with parsing errors
+      }
+    });
+
+    const combinedItems: TimelineItem[] = [
+      ...comments.map(comment => ({ type: 'comment' as const, data: comment })),
+      ...validAuditRecords.map(audit => ({ type: 'audit' as const, data: audit }))
+    ];
+
+    // Sort by timestamp (newest first)
+    combinedItems.sort((a, b) => {
+      const dateA = a.type === 'comment' 
+        ? (a.data.created_at ? new Date(a.data.created_at).getTime() : 0)
+        : new Date(a.data.timestamp).getTime();
+      const dateB = b.type === 'comment' 
+        ? (b.data.created_at ? new Date(b.data.created_at).getTime() : 0)
+        : new Date(b.data.timestamp).getTime();
+      return dateB - dateA;
+    });
+
+    setTimelineItems(combinedItems);
+  };
+
+  // Load comments and audit records when component mounts
   useEffect(() => {
-    fetchComments();
+    const loadTimelineData = async () => {
+      setTimelineLoading(true);
+      await Promise.all([fetchComments(), fetchAudit()]);
+      setTimelineLoading(false);
+    };
+    
+    loadTimelineData();
   }, [plot.id, parentProject?._db_id, session]);
+
+  // Update timeline when comments or audit records change
+  useEffect(() => {
+    updateTimeline();
+  }, [comments, auditRecords]);
 
   // Combine and sort all fields by category order - both plot and project fields together
   const plotFields = schema.filter(field => field.Table === "Land Plots, Sites");
@@ -718,14 +886,14 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
         </div>
       </div>
 
-      {/* Comments Section - Always visible at top */}
+      {/* Combined Timeline Section */}
       <div className="mb-4 p-3 bg-muted/20 rounded-lg border border-border/20">
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Comments ({comments.length})
+            Activity Timeline ({timelineItems.length})
           </h4>
           <button
             onClick={() => setShowAddCommentModal(true)}
@@ -735,41 +903,139 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
           </button>
         </div>
 
-        {commentsLoading ? (
+        {timelineLoading ? (
           <div className="flex items-center justify-center py-4">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-            <span className="ml-2 text-xs text-muted-foreground">Loading comments...</span>
+            <span className="ml-2 text-xs text-muted-foreground">Loading activity...</span>
           </div>
-        ) : comments.length === 0 ? (
+        ) : timelineItems.length === 0 ? (
           <div className="text-center py-4 text-muted-foreground">
-            <p className="text-xs">No comments yet</p>
+            <p className="text-xs">No activity found</p>
           </div>
         ) : (
-          <div className="space-y-2 h-[400px] overflow-y-auto">
-            {comments.map((comment) => (
-              <div key={comment.id} className="bg-background/60 rounded p-2 border border-border/10">
+            <div className="space-y-2 h-[400px] overflow-y-auto">
+            {timelineItems.map((item) => (
+              <div key={`${item.type}-${item.data.id}`} className="bg-background/60 rounded p-1 border border-border/10">
                 <div className="flex items-start gap-2">
+
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium text-foreground">
-                        {comment.created_by_email}
-                      </span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        comment.table_name === 'projects' 
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                          : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                    <div className="flex items-center gap-2 mb-2">
+                      {/* Activity type icon */}
+                      <div className={`p-1 rounded ${
+                        item.type === 'comment'
+                          ? 'bg-blue-100 dark:bg-blue-900/30'
+                          : 'bg-green-100 dark:bg-green-900/30'
                       }`}>
-                        {comment.table_name === 'projects' ? 'Project' : 'Plot'}
+                        {item.type === 'comment' ? (
+                          <svg className="w-3 h-3 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                          </svg>
+                        )}
+                      </div>
+
+                      <span className="text-xs font-medium text-foreground">
+                        {item.type === 'comment'
+                          ? (item.data as Comment).created_by_name || (item.data as Comment).created_by_email
+                          : (item.data as AuditRecord).user_name || (item.data as AuditRecord).user_email || 'System'
+                        }
                       </span>
-                      {comment.created_at && (
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(comment.created_at).toLocaleString()}
-                        </span>
-                      )}
+
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                        item.type === 'comment'
+                          ? ((item.data as Comment).table_name === 'projects'
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200')
+                          : ((item.data as AuditRecord).table_name === 'projects'
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                              : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200')
+                      }`}>
+                        {item.type === 'comment'
+                          ? ((item.data as Comment).table_name === 'projects' ? 'Project' : 'Plot')
+                          : ((item.data as AuditRecord).table_name === 'projects' ? 'Project' : 'Plot')
+                        }
+                      </span>
+
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        {item.type === 'comment'
+                          ? formatDate((item.data as Comment).created_at)
+                          : formatDate((item.data as AuditRecord).timestamp)
+                        }
+                      </span>
                     </div>
-                    <p className="text-xs text-foreground leading-relaxed">
-                      {comment.comment}
-                    </p>
+
+                    {/* Content based on type */}
+                    {item.type === 'comment' ? (
+                      <p className="text-xs text-foreground leading-relaxed ml-1">
+                        {(item.data as Comment).comment}
+                      </p>
+                    ) : (
+                      <div className="ml-1">
+                        {/* Show changed field values for audit */}
+                        {(item.data as AuditRecord).details && (() => {
+                          try {
+                            const details = typeof (item.data as AuditRecord).details === 'string' 
+                              ? JSON.parse((item.data as AuditRecord).details!) 
+                              : (item.data as AuditRecord).details;
+                            const changedData = details.data || {};
+                            const oldData = details.old_data || {};
+                            
+                            // Filter entries to only show meaningful changes from one value to another different value
+                            const validEntries = Object.entries(changedData).filter(([field, value]) => {
+                              if (value === null || value === undefined || String(value).trim() === '') {
+                                return false;
+                              }
+                              const oldValue = oldData[field];
+                              if (oldValue === null || oldValue === undefined || String(oldValue).trim() === '') {
+                                return false; // Don't show initial field settings
+                              }
+                              const newValueStr = String(value).trim();
+                              const oldValueStr = String(oldValue).trim();
+                              return oldValueStr !== newValueStr; // Only show actual changes
+                            });
+                            
+                            const entries = validEntries.slice(0, 3);
+                            
+                            return (
+                              <div className="space-y-1">
+                                {entries.map(([field, value]) => {
+                                  const newValueStr = String(value);
+                                  const oldValue = oldData[field];
+                                  const isTruncated = typeof value === 'string' && value.length > 250;
+                                  const displayValue = isTruncated 
+                                    ? `${value.substring(0, 250)}...`
+                                    : newValueStr;
+                                  
+                                  return (
+                                    <div key={field} className="text-xs">
+                                      <span className="font-medium text-muted-foreground">{field}:</span>
+                                      <span className="ml-1 text-green-700 dark:text-green-300">
+                                        {displayValue}
+                                      </span>
+                                      {!isTruncated && oldValue !== undefined && oldValue !== null && String(oldValue) !== newValueStr && (
+                                        <span className="ml-1 text-red-600 dark:text-red-400">
+                                          (was: {String(oldValue)})
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                                {validEntries.length > 3 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    ... and {validEntries.length - 3} more fields
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          } catch (error) {
+                            return null; // Hide audit entries with parsing errors
+                          }
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
