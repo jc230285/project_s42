@@ -24,7 +24,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { hasScale42Access } from '@/lib/auth-utils';
 
-function DashboardLayout({ children, initialSidebarCollapsed = false }: { children: React.ReactNode, initialSidebarCollapsed?: boolean }) {
+function DashboardLayout({ children, initialSidebarCollapsed = false, contentClassName }: { children: React.ReactNode, initialSidebarCollapsed?: boolean, contentClassName?: string }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(!initialSidebarCollapsed);
   const { data: session } = useSession();
@@ -286,7 +286,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false }: { childr
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col">
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className={`flex-1 overflow-y-auto ${contentClassName ?? 'p-6'}`}>
           {children}
         </main>
       </div>

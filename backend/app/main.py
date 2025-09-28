@@ -1,8 +1,7 @@
-﻿from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Body
+﻿from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Body, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from pydantic import BaseModel
 import mysql.connector
 import requests
@@ -1158,9 +1157,118 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
 
 # Map API endpoints added at the end
 @app.get('/projects/map-data', tags=["Projects"])
-def get_map_data_endpoint():
-    """Get map visualization data"""
-    return {"status": "Map data endpoint works"}
+def get_map_data_endpoint(current_user: dict = Depends(get_current_user)):
+    """Get map visualization data with site locations and coordinates from NocoDB"""
+    try:
+        # Get NocoDB configuration from environment
+        nocodb_api_url = os.getenv("NOCODB_API_URL", "https://nocodb.edbmotte.com")
+        nocodb_api_token = os.getenv("NOCODB_API_TOKEN")
+        nocodb_base_id = os.getenv("NOCODB_BASE_ID")
+        nocodb_landplots_table_id = "mmqclkrvx9lbtpc"  # Land Plots table ID
+        
+        if not nocodb_api_token or not nocodb_base_id:
+            return JSONResponse(
+                content={"error": "NocoDB configuration missing"}, 
+                status_code=500
+            )
+        
+        # Construct NocoDB API v2 URL to get all land plots
+        api_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_landplots_table_id}/records"
+        
+        # Set up headers for NocoDB API
+        headers = {
+            "xc-token": nocodb_api_token,
+            "Content-Type": "application/json"
+        }
+        
+        # Get all records with pagination
+        all_plots = []
+        offset = 0
+        limit = 1000  # Large limit to get all records
+        
+        while True:
+            params = {
+                "limit": limit,
+                "offset": offset
+            }
+            
+            # Make request to NocoDB API with SSL verification disabled for now
+            response = requests.get(api_url, headers=headers, params=params, verify=False)
+            
+            if response.status_code != 200:
+                return JSONResponse(
+                    content={
+                        "error": f"NocoDB API error: {response.status_code} - {response.text}",
+                        "url": api_url
+                    }, 
+                    status_code=500
+                )
+            
+            # Parse the data
+            data = response.json()
+            batch_plots = data.get("list", [])
+            all_plots.extend(batch_plots)
+            
+            # Check if we got fewer records than the limit (last page)
+            if len(batch_plots) < limit:
+                break
+                
+            offset += limit
+        
+        # Parse the data
+        plots = all_plots
+        
+        # Process plots to extract map data
+        sites_data = []
+        for plot in plots:
+            # Parse coordinates from 'Coordinates' field (lat;lng format)
+            coord_str = str(plot.get('Coordinates', '')).strip()
+            lat = None
+            lng = None
+            
+            if coord_str and ';' in coord_str:
+                try:
+                    parts = coord_str.split(';')
+                    if len(parts) == 2:
+                        lat = float(parts[0].strip())
+                        lng = float(parts[1].strip())
+                except (ValueError, TypeError):
+                    pass
+            
+            # Only include plots with valid coordinates
+            if lat is not None and lng is not None and lat != 0 and lng != 0:
+                # Extract plot information
+                plot_id = plot.get('Id', 'Unknown')
+                plot_name = plot.get('Plot Name', '') or f"Plot {plot_id}"  # Plot_Name field
+                
+                site_data = {
+                    'id': plot_id,
+                    'name': plot_name,
+                    'lat': lat,
+                    'lng': lng,
+                    'address': plot.get('Plot Address', ''),  # Site_Address field
+                    'country': plot.get('Country', ''),  # Country field
+                    'plot_id': plot.get('Id', ''),
+                    'project_name': plot.get('Projects', ''),  # Will be populated if we fetch project data
+                    'project_code': '',
+                    'project_partner': '',
+                    'geojson': plot.get('geojson', ''),
+                }
+                sites_data.append(site_data)
+        
+        return JSONResponse(content={
+            "sites": sites_data,
+            "count": len(sites_data),
+            "total_plots": len(plots),
+            "plots_with_coords": len(sites_data),
+            "source": "NocoDB API v2 direct fetch"
+        })
+        
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Failed to load map data: {str(e)}"}, 
+            status_code=500
+        )
 
 @app.get('/projects/map-stats', tags=["Projects"])  
 def get_map_stats_endpoint():
