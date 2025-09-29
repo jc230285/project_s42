@@ -1334,6 +1334,167 @@ def nocodb_sync_endpoint(current_user: dict = Depends(get_current_user)):
         )
 
 
+class NocoDBQuery(BaseModel):
+    query: str
+
+@app.post("/nocodb/query", tags=["NocoDB"])
+async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = Depends(get_current_user)):
+    """Execute a query against NocoDB and return aggregated results"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+
+        if user_email:
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
+                    user_token = user_data['nocodb_api']
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        nocodb_api_url = os.getenv("NOCODB_API_URL", "https://nocodb.edbmotte.com")
+        base_id = os.getenv("NOCODB_BASE_ID")
+
+        if not api_token or not base_id:
+            return JSONResponse(
+                content={"error": "NocoDB configuration missing"},
+                status_code=500
+            )
+
+        # For now, we'll implement a simple aggregation for Hoyanger Power Data
+        # Get the table ID for Hoyanger Power Data - we'll need to find this
+        # For now, let's assume we can get all records and aggregate them
+
+        # First, let's try to get the table info to find the Hoyanger Power Data table
+        table_api_url = f"{nocodb_api_url}/api/v2/meta/bases/{base_id}/tables"
+
+        headers = {
+            "xc-token": api_token,
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(table_api_url, headers=headers, verify=False)
+
+        if response.status_code != 200:
+            return JSONResponse(
+                content={"error": f"Failed to get table info: {response.status_code}"},
+                status_code=500
+            )
+
+        tables = response.json().get("list", [])
+        hoyanger_table = None
+
+        for table in tables:
+            if table.get("title") == "Hoyanger Power Data":
+                hoyanger_table = table
+                break
+
+        if not hoyanger_table:
+            return JSONResponse(
+                content={"error": "Hoyanger Power Data table not found"},
+                status_code=404
+            )
+
+        table_id = hoyanger_table["id"]
+
+        # Get all records from the table
+        records_api_url = f"{nocodb_api_url}/api/v2/tables/{table_id}/records?limit=10000"
+
+        response = requests.get(records_api_url, headers=headers, verify=False)
+
+        if response.status_code != 200:
+            return JSONResponse(
+                content={"error": f"Failed to get records: {response.status_code}"},
+                status_code=500
+            )
+
+        data = response.json()
+        records = data.get("list", [])
+
+        # Get first record per day instead of aggregating
+        from collections import defaultdict
+        from datetime import datetime
+
+        daily_first_records = {}
+
+        for record in records:
+            timestamp = record.get('timestamp') or record.get('Timestamp') or record.get('Date')
+            if not timestamp:
+                continue
+
+            try:
+                # Parse date
+                if isinstance(timestamp, str):
+                    date_obj = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).date()
+                else:
+                    date_obj = timestamp.date() if hasattr(timestamp, 'date') else timestamp
+
+                date_key = date_obj.isoformat()
+
+                # Only keep the first record for each day
+                if date_key not in daily_first_records:
+                    daily_first_records[date_key] = record
+
+            except Exception as e:
+                print(f"Error processing record: {e}")
+                continue
+
+        # Format result with first records
+        result_rows = []
+        for date_key, record in sorted(daily_first_records.items(), reverse=True):
+            row = {
+                'date': date_key,
+                'hourly_records': 1,  # Since we're showing first record per day
+                'first_reading': record.get('timestamp') or record.get('Timestamp') or record.get('Date'),
+                'last_reading': record.get('timestamp') or record.get('Timestamp') or record.get('Date')
+            }
+
+            # Extract field values directly from the first record
+            for field in ['1A', '1B', '2A', '2B', '3A', '3B', '4M3', '5M2', 'ph']:
+                value = record.get(field)
+                if value is not None and value != '':
+                    try:
+                        num_value = float(value)
+                        if field == '4M3':
+                            field_key = '4m3'
+                        else:
+                            field_key = field.lower()
+                        row[field_key] = round(num_value, 2)
+                    except (ValueError, TypeError):
+                        row[field.lower()] = None
+                else:
+                    row[field.lower()] = None
+
+            result_rows.append(row)
+
+        return JSONResponse(content={
+            "success": True,
+            "rows": result_rows,
+            "total_days": len(result_rows),
+            "source": "nocodb_aggregated"
+        })
+
+    except Exception as e:
+        return JSONResponse(
+            content={"error": f"Unexpected error: {str(e)}"},
+            status_code=500
+        )
+
+
 ######################################################################
 # Software User Management endpoints
 ######################################################################
