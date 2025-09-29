@@ -130,6 +130,7 @@ function ProjectsPageContent() {
   // Shared collapse state for all plots
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [collapsedSubcategories, setCollapsedSubcategories] = useState<Set<string>>(new Set());
+  const [collapsedActivityTimelines, setCollapsedActivityTimelines] = useState<Set<number>>(new Set());
 
   // Cookie utilities
   const setCookie = (name: string, value: string, days: number = 30) => {
@@ -178,6 +179,7 @@ function ProjectsPageContent() {
   useEffect(() => {
     const savedCategories = getCookie('collapsed-categories');
     const savedSubcategories = getCookie('collapsed-subcategories');
+    const savedActivityTimelines = getCookie('collapsed-activity-timelines');
     
     if (savedCategories) {
       try {
@@ -200,6 +202,17 @@ function ProjectsPageContent() {
         console.warn('Failed to parse collapsed subcategories from cookie');
       }
     }
+
+    if (savedActivityTimelines) {
+      try {
+        const parsed = JSON.parse(savedActivityTimelines);
+        if (Array.isArray(parsed)) {
+          setCollapsedActivityTimelines(new Set(parsed));
+        }
+      } catch (error) {
+        console.warn('Failed to parse collapsed activity timelines from cookie');
+      }
+    }
   }, []);
 
   // Save collapse state to cookies whenever it changes
@@ -210,6 +223,10 @@ function ProjectsPageContent() {
   useEffect(() => {
     setCookie('collapsed-subcategories', JSON.stringify([...collapsedSubcategories]));
   }, [collapsedSubcategories]);
+
+  useEffect(() => {
+    setCookie('collapsed-activity-timelines', JSON.stringify([...collapsedActivityTimelines]));
+  }, [collapsedActivityTimelines]);
 
   // Toggle functions for shared collapse state
   const handleToggleCategory = (category: string) => {
@@ -231,6 +248,18 @@ function ProjectsPageContent() {
         newSet.delete(subcategoryKey);
       } else {
         newSet.add(subcategoryKey);
+      }
+      return newSet;
+    });
+  };
+
+  const handleToggleActivityTimeline = (plotId: number) => {
+    setCollapsedActivityTimelines(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(plotId)) {
+        newSet.delete(plotId);
+      } else {
+        newSet.add(plotId);
       }
       return newSet;
     });
@@ -659,6 +688,8 @@ function ProjectsPageContent() {
                               collapsedSubcategories={collapsedSubcategories}
                               onToggleCategory={handleToggleCategory}
                               onToggleSubcategory={handleToggleSubcategory}
+                              collapsedActivityTimelines={collapsedActivityTimelines}
+                              onToggleActivityTimeline={handleToggleActivityTimeline}
                             />
                           );
                         });

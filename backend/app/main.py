@@ -1822,6 +1822,65 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/nocodb/verify-update", tags=["nocodb"])
+async def verify_nocodb_update(
+    table_id: str = Query(...),
+    row_id: str = Query(...),
+    field_id: str = Query(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Verify that a field was actually updated by fetching the current value"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+        
+        if user_email:
+            try:
+                # Get user's NocoDB token from database
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                if user_data and user_data['nocodb_api']:
+                    user_token = user_data['nocodb_api']
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token for verification: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        if not api_token:
+            raise HTTPException(status_code=500, detail="No API token available")
+        
+        # Get the specific record to check the field value
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v2/tables/{table_id}/records/{row_id}"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token
+        }
+        
+        response = requests.get(nocodb_url, headers=headers, verify=False)
+        
+        if response.status_code == 200:
+            record_data = response.json()
+            field_value = record_data.get(field_id)
+            return {"success": True, "value": field_value}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"NocoDB API error: {response.text}")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/nocodb/table/{table_id}", tags=["nocodb"])
 async def get_nocodb_table_info(table_id: str, current_user: dict = Depends(get_current_user)):
     """Get table information from NocoDB"""

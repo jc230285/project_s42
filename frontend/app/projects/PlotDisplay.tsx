@@ -90,6 +90,8 @@ interface PlotDisplayProps {
   collapsedSubcategories: Set<string>;
   onToggleCategory: (category: string) => void;
   onToggleSubcategory: (key: string) => void;
+  collapsedActivityTimelines: Set<number>;
+  onToggleActivityTimeline: (plotId: number) => void;
 }
 
 // SingleLineTextField Component
@@ -421,6 +423,714 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   );
 };
 
+// Generic Field Component for other field types
+interface GenericFieldProps {
+  field: any;
+  fieldValue: any;
+  calculatedHeight: number;
+  isProjectField: boolean;
+  recordId: number;
+  tableName: string;
+}
+
+const GenericField: React.FC<GenericFieldProps> = ({
+  field,
+  fieldValue,
+  calculatedHeight,
+  isProjectField,
+  recordId,
+  tableName
+}) => {
+  const { data: session } = useSession();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editValue, setEditValue] = useState(fieldValue || '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    
+    setIsSaving(true);
+    
+    // Show loading toast
+    const loadingToast = toast.loading('Saving changes...');
+    
+    try {
+      // Create auth header like other components
+      if (!session?.user?.email) {
+        throw new Error("No session available");
+      }
+      
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
+      // Determine the correct table ID based on table name
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+      
+      const response = await fetch('/api/proxy/nocodb/update-row', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          table_id: tableId,
+          row_id: recordId.toString(),
+          field_data: {
+            [field["Field ID"]]: editValue
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`Failed to update field: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('Field updated successfully:', result);
+      
+      // Close modal and show success toast
+      setIsModalOpen(false);
+      toast.dismiss(loadingToast);
+      toast.success(`${field["Field Name"]} updated successfully!`);
+      
+    } catch (error) {
+      console.error('Error updating field:', error);
+      toast.dismiss(loadingToast);
+      toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditValue(fieldValue || '');
+    setIsModalOpen(false);
+  };
+
+  // Determine input type based on field type
+  const getInputType = (fieldType: string) => {
+    switch (fieldType.toLowerCase()) {
+      case 'number':
+      case 'decimal':
+      case 'currency':
+        return 'number';
+      case 'email':
+        return 'email';
+      case 'url':
+        return 'url';
+      case 'date':
+        return 'date';
+      case 'datetime':
+        return 'datetime-local';
+      case 'time':
+        return 'time';
+      case 'phone':
+      case 'phone_number':
+        return 'tel';
+      default:
+        return 'text';
+    }
+  };
+
+  // Format display value
+  const formatDisplayValue = (value: any, fieldType: string) => {
+    if (!value) return 'Click to add content...';
+    
+    switch (fieldType.toLowerCase()) {
+      case 'currency':
+        return `$${Number(value).toLocaleString()}`;
+      case 'number':
+      case 'decimal':
+        return Number(value).toLocaleString();
+      case 'date':
+        return new Date(value).toLocaleDateString();
+      case 'datetime':
+        return new Date(value).toLocaleString();
+      case 'boolean':
+        return value ? 'Yes' : 'No';
+      default:
+        return String(value);
+    }
+  };
+
+  return (
+    <>
+      <div 
+        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors overflow-auto"
+        style={{ 
+          minHeight: `${calculatedHeight}px`
+        }}
+        data-field-id={field["Field ID"]}
+        data-field-type={field.Type}
+        onClick={() => setIsModalOpen(true)}
+      >
+        {/* Field name - top */}
+        <div className="text-sm font-medium text-foreground mb-2 break-words">
+          {field["Field Name"]}
+        </div>
+        
+        {/* Field value - below field name */}
+        <div className="text-xs text-muted-foreground">
+          {formatDisplayValue(fieldValue, field.Type)}
+        </div>
+      </div>
+
+      {/* Edit Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-lg shadow-2xl max-w-md w-full mx-4 max-h-[60vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-t-lg">
+              <h3 className="text-lg font-semibold text-white">
+                Edit {field["Field Name"]}
+              </h3>
+              <button
+                onClick={handleCancel}
+                className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 p-4 overflow-hidden bg-gray-900 dark:bg-gray-800">
+              {field.Type.toLowerCase() === 'boolean' ? (
+                <select
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value === 'true')}
+                  className="w-full p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                  disabled={isSaving}
+                >
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              ) : (
+                <input
+                  type={getInputType(field.Type)}
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="w-full p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
+                  placeholder={`Enter ${field["Field Name"].toLowerCase()}...`}
+                  disabled={isSaving}
+                />
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-b-lg">
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 text-sm border border-gray-600 text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className={`px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${
+                  isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// SingleSelect Field Component
+interface SingleSelectFieldProps {
+  field: any;
+  fieldValue: any;
+  calculatedHeight: number;
+  isProjectField: boolean;
+  recordId: number;
+  tableName: string;
+}
+
+const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
+  field,
+  fieldValue,
+  calculatedHeight,
+  isProjectField,
+  recordId,
+  tableName
+}) => {
+  const { data: session } = useSession();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editValue, setEditValue] = useState(fieldValue || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [options, setOptions] = useState<string[]>([]);
+
+  // Parse options from field Options string
+  useEffect(() => {
+    const optionsString = field.Options || '';
+    if (optionsString) {
+      // Parse "Option 1 | Option 2 | Option 3" format
+      const parsedOptions = optionsString.split(' | ').map((opt: string) => opt.trim()).filter((opt: string) => opt);
+      setOptions(parsedOptions);
+    }
+  }, [field.Options]);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    
+    // Validate that the selected value is in the allowed options
+    if (editValue && !options.includes(editValue)) {
+      toast.error(`Invalid option "${editValue}". Please select from available choices: ${options.join(', ')}`);
+      return;
+    }
+    
+    setIsSaving(true);
+    const loadingToast = toast.loading('Saving changes...');
+    
+    try {
+      if (!session?.user?.email) {
+        throw new Error("No session available");
+      }
+      
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+      
+      const response = await fetch('/api/proxy/nocodb/update-row', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          table_id: tableId,
+          row_id: recordId.toString(),
+          field_data: {
+            [field["Field ID"]]: editValue
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`Failed to update field: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('API Response:', result);
+      
+      // Verify the update after a short delay
+      setTimeout(async () => {
+        try {
+          const verifyResponse = await fetch(`/api/proxy/nocodb/verify-update?table_id=${tableId}&row_id=${recordId}&field_id=${field["Field ID"]}`, {
+            headers: { 'Authorization': authHeader },
+          });
+          
+          if (verifyResponse.ok) {
+            const verifyData = await verifyResponse.json();
+            const actualValue = verifyData.value;
+            
+            if (actualValue === editValue) {
+              toast.success(`${field["Field Name"]} updated successfully!`);
+            } else {
+              toast.error(`Failed to update ${field["Field Name"]}: Value not accepted by database`);
+            }
+          } else {
+            toast.error(`${field["Field Name"]} update status unclear. Please refresh to verify changes.`);
+          }
+        } catch (verifyError) {
+          console.error('Verification error:', verifyError);
+          toast.error(`${field["Field Name"]} update sent, but verification failed. Please refresh to check.`);
+        }
+      }, 500);
+      
+      setIsModalOpen(false);
+      toast.dismiss(loadingToast);
+      
+    } catch (error) {
+      console.error('Error updating field:', error);
+      toast.dismiss(loadingToast);
+      toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditValue(fieldValue || '');
+    setIsModalOpen(false);
+  };
+
+  return (
+    <>
+      <div 
+        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors"
+        style={{ minHeight: `${calculatedHeight}px` }}
+        data-field-id={field["Field ID"]}
+        data-field-type={field.Type}
+        onClick={() => setIsModalOpen(true)}
+      >
+        <div className="text-sm font-medium text-foreground mb-2 break-words">
+          {field["Field Name"]}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {fieldValue || 'Click to select option...'}
+        </div>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-lg shadow-2xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-t-lg">
+              <h3 className="text-lg font-semibold text-white">
+                Edit {field["Field Name"]}
+              </h3>
+              <button
+                onClick={handleCancel}
+                className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 bg-gray-900 dark:bg-gray-800">
+              {options.length > 0 ? (
+                <select
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="w-full p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                  disabled={isSaving}
+                >
+                  <option value="">-- Select Option --</option>
+                  {options.map((option, index) => (
+                    <option key={index} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="w-full p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
+                  placeholder="Enter value (no options defined)..."
+                  disabled={isSaving}
+                />
+              )}
+              {options.length > 0 && (
+                <div className="mt-2 text-xs text-gray-400">
+                  Available options: {options.join(', ')}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-b-lg">
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 text-sm border border-gray-600 text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className={`px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${
+                  isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// MultiSelect Field Component
+interface MultiSelectFieldProps {
+  field: any;
+  fieldValue: any;
+  calculatedHeight: number;
+  isProjectField: boolean;
+  recordId: number;
+  tableName: string;
+}
+
+const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
+  field,
+  fieldValue,
+  calculatedHeight,
+  isProjectField,
+  recordId,
+  tableName
+}) => {
+  const { data: session } = useSession();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editValue, setEditValue] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [options, setOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    // Parse current value
+    if (Array.isArray(fieldValue)) {
+      setEditValue(fieldValue);
+    } else if (typeof fieldValue === 'string' && fieldValue) {
+      setEditValue(fieldValue.split(',').map(v => v.trim()));
+    } else {
+      setEditValue([]);
+    }
+
+    // Parse options from field Options string
+    const optionsString = field.Options || '';
+    if (optionsString) {
+      const parsedOptions = optionsString.split(' | ').map((opt: string) => opt.trim()).filter((opt: string) => opt);
+      setOptions(parsedOptions);
+    }
+  }, [fieldValue, field.Options]);
+
+  const handleOptionToggle = (option: string) => {
+    setEditValue(prev => {
+      if (prev.includes(option)) {
+        return prev.filter(v => v !== option);
+      } else {
+        return [...prev, option];
+      }
+    });
+  };
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    
+    // Validate that all selected values are in the allowed options
+    const invalidOptions = editValue.filter(val => !options.includes(val));
+    if (invalidOptions.length > 0) {
+      toast.error(`Invalid options: "${invalidOptions.join(', ')}". Please select from available choices: ${options.join(', ')}`);
+      return;
+    }
+    
+    setIsSaving(true);
+    const loadingToast = toast.loading('Saving changes...');
+    
+    try {
+      if (!session?.user?.email) {
+        throw new Error("No session available");
+      }
+      
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+      
+      const response = await fetch('/api/proxy/nocodb/update-row', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          table_id: tableId,
+          row_id: recordId.toString(),
+          field_data: {
+            [field["Field ID"]]: editValue
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('API Error:', response.status, errorData);
+        throw new Error(`Failed to update field: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('API Response:', result);
+      
+      // Verify the update after a short delay
+      setTimeout(async () => {
+        try {
+          const verifyResponse = await fetch(`/api/proxy/nocodb/verify-update?table_id=${tableId}&row_id=${recordId}&field_id=${field["Field ID"]}`, {
+            headers: { 'Authorization': authHeader },
+          });
+          
+          if (verifyResponse.ok) {
+            const verifyData = await verifyResponse.json();
+            const actualValue = verifyData.value;
+            
+            // Compare arrays
+            const actualArray = Array.isArray(actualValue) ? actualValue : (actualValue ? [actualValue] : []);
+            const expectedArray = editValue;
+            
+            if (JSON.stringify(actualArray.sort()) === JSON.stringify(expectedArray.sort())) {
+              toast.success(`${field["Field Name"]} updated successfully!`);
+            } else {
+              toast.error(`Failed to update ${field["Field Name"]}: Values not accepted by database`);
+            }
+          } else {
+            toast.error(`${field["Field Name"]} update status unclear. Please refresh to verify changes.`);
+          }
+        } catch (verifyError) {
+          console.error('Verification error:', verifyError);
+          toast.error(`${field["Field Name"]} update sent, but verification failed. Please refresh to check.`);
+        }
+      }, 500);
+      
+      setIsModalOpen(false);
+      toast.dismiss(loadingToast);
+      
+    } catch (error) {
+      console.error('Error updating field:', error);
+      toast.dismiss(loadingToast);
+      toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    // Reset to original value
+    if (Array.isArray(fieldValue)) {
+      setEditValue(fieldValue);
+    } else if (typeof fieldValue === 'string' && fieldValue) {
+      setEditValue(fieldValue.split(',').map(v => v.trim()));
+    } else {
+      setEditValue([]);
+    }
+    setIsModalOpen(false);
+  };
+
+  const formatDisplayValue = (value: any) => {
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.join(', ') : 'Click to select options...';
+    } else if (typeof value === 'string' && value) {
+      return value;
+    } else {
+      return 'Click to select options...';
+    }
+  };
+
+  return (
+    <>
+      <div 
+        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors"
+        style={{ minHeight: `${calculatedHeight}px` }}
+        data-field-id={field["Field ID"]}
+        data-field-type={field.Type}
+        onClick={() => setIsModalOpen(true)}
+      >
+        <div className="text-sm font-medium text-foreground mb-2 break-words">
+          {field["Field Name"]}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {formatDisplayValue(fieldValue)}
+        </div>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-lg shadow-2xl max-w-md w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-t-lg">
+              <h3 className="text-lg font-semibold text-white">
+                Edit {field["Field Name"]}
+              </h3>
+              <button
+                onClick={handleCancel}
+                className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 p-4 bg-gray-900 dark:bg-gray-800 overflow-y-auto">
+              {options.length > 0 ? (
+                <div className="space-y-2">
+                  {options.map((option, index) => (
+                    <label
+                      key={index}
+                      className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-700 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={editValue.includes(option)}
+                        onChange={() => handleOptionToggle(option)}
+                        className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                        disabled={isSaving}
+                      />
+                      <span className="text-white text-sm">{option}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={editValue.join(', ')}
+                  onChange={(e) => setEditValue(e.target.value.split(',').map(v => v.trim()).filter(v => v))}
+                  className="w-full p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
+                  placeholder="Enter comma-separated values (no options defined)..."
+                  disabled={isSaving}
+                />
+              )}
+              {options.length > 0 && (
+                <div className="mt-3 p-2 bg-gray-800 rounded text-xs text-gray-400">
+                  Selected: {editValue.length > 0 ? editValue.join(', ') : 'None'}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-b-lg">
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 text-sm border border-gray-600 text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className={`px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${
+                  isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 // Collapsible Category Header Component
 interface CategoryHeaderProps {
   category: string;
@@ -504,7 +1214,9 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
   collapsedCategories,
   collapsedSubcategories,
   onToggleCategory,
-  onToggleSubcategory
+  onToggleSubcategory,
+  collapsedActivityTimelines,
+  onToggleActivityTimeline
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
@@ -888,33 +1600,55 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
 
       {/* Combined Timeline Section */}
       <div className="mb-4 p-3 bg-muted/20 rounded-lg border border-border/20">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+        <div 
+          className="flex items-center justify-between p-2 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-lg cursor-pointer hover:bg-primary/15 transition-colors mb-2"
+          onClick={() => onToggleActivityTimeline(plot.id)}
+        >
+          <div className="flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Activity Timeline ({timelineItems.length})
-          </h4>
-          <button
-            onClick={() => setShowAddCommentModal(true)}
-            className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors"
-          >
-            + Add Comment
-          </button>
+            <h4 className="text-sm font-medium text-foreground">
+              Activity Timeline ({timelineItems.length})
+            </h4>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAddCommentModal(true);
+              }}
+              className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90 transition-colors"
+            >
+              + Add Comment
+            </button>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">
+                {collapsedActivityTimelines.has(plot.id) ? 'Expand' : 'Collapse'}
+              </span>
+              <div className={`transform transition-transform ${collapsedActivityTimelines.has(plot.id) ? 'rotate-0' : 'rotate-90'}`}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M6 4l4 4-4 4V4z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {timelineLoading ? (
-          <div className="flex items-center justify-center py-4">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-            <span className="ml-2 text-xs text-muted-foreground">Loading activity...</span>
-          </div>
-        ) : timelineItems.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground">
-            <p className="text-xs">No activity found</p>
-          </div>
-        ) : (
-            <div className="space-y-2 h-[400px] overflow-y-auto">
-            {timelineItems.map((item) => (
+        {!collapsedActivityTimelines.has(plot.id) && (
+          <>
+            {timelineLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                <span className="ml-2 text-xs text-muted-foreground">Loading activity...</span>
+              </div>
+            ) : timelineItems.length === 0 ? (
+              <div className="text-center py-4 text-muted-foreground h-[300px] flex items-center justify-center">
+                <p className="text-xs">No activity found</p>
+              </div>
+            ) : (
+              <div className="space-y-2 h-[300px] overflow-y-auto">
+                {timelineItems.map((item) => (
               <div key={`${item.type}-${item.data.id}`} className="bg-background/60 rounded p-1 border border-border/10">
                 <div className="flex items-start gap-2">
 
@@ -1040,7 +1774,9 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                 </div>
               </div>
             ))}
-          </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -1137,45 +1873,90 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                     );
                                   }
 
-                                  // Fallback for other field types
-                                  return (
-                                    <div 
-                                      key={`${field.source}-${idx}`} 
-                                      className="flex justify-between items-center gap-4 py-2 border-b border-border/10" 
-                                      style={{ minHeight: `${calculatedHeight}px` }}
-                                      data-field-id={field["Field ID"]}
-                                      data-field-type={field.Type}
-                                    >
-                                      {/* Left side: Field info */}
-                                      <div className="flex-1 flex flex-col justify-center">
-                                        <div className="font-medium text-sm text-foreground leading-tight">
-                                          {field["Field Name"]} ({field["Field ID"]})
+                                  if (field.Type === "SingleSelect") {
+                                    return (
+                                      <SingleSelectField
+                                        key={`${field.source}-${idx}`}
+                                        field={field}
+                                        fieldValue={fieldValue}
+                                        calculatedHeight={calculatedHeight}
+                                        isProjectField={isProjectField}
+                                        recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
+                                        tableName={isProjectField ? "Projects" : "LandPlots"}
+                                      />
+                                    );
+                                  }
+
+                                  if (field.Type === "MultiSelect") {
+                                    return (
+                                      <MultiSelectField
+                                        key={`${field.source}-${idx}`}
+                                        field={field}
+                                        fieldValue={fieldValue}
+                                        calculatedHeight={calculatedHeight}
+                                        isProjectField={isProjectField}
+                                        recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
+                                        tableName={isProjectField ? "Projects" : "LandPlots"}
+                                      />
+                                    );
+                                  }
+
+                                  // Static fields that are not editable
+                                  const staticFieldTypes = [
+                                    "CreatedBy", "CreatedTime", "Formula", "ID",
+                                    "LastModifiedBy", "LastModifiedTime", "LinkToAnotherRecord",
+                                    "Lookup", "Order", "Rollup", "User"
+                                  ];
+
+                                  if (staticFieldTypes.includes(field.Type)) {
+                                    return (
+                                      <div
+                                        key={`${field.source}-${idx}`}
+                                        className="relative p-3 border border-red-300/50 rounded-lg bg-red-50/30 cursor-not-allowed"
+                                        style={{
+                                          minHeight: `${calculatedHeight}px`
+                                        }}
+                                        data-field-id={field["Field ID"]}
+                                        data-field-type={field.Type}
+                                      >
+                                        {/* Field name - top */}
+                                        <div className="text-sm font-medium text-red-800 mb-2 break-words">
+                                          {field["Field Name"]}
                                         </div>
-                                        <div className="text-xs text-muted-foreground mt-1">
-                                          {field.Category} {field.Subcategory && `• ${field.Subcategory}`} • {field.Type}
+
+                                        {/* Field info and value */}
+                                        <div className="text-xs text-red-600 space-y-1">
+                                          <div className="font-mono">
+                                            ID: {field["Field ID"]} • Type: {field.Type}
+                                          </div>
+                                          <div className="text-red-700">
+                                            {fieldValue !== null && fieldValue !== undefined ? (
+                                              Array.isArray(fieldValue)
+                                                ? fieldValue.join(', ')
+                                                : String(fieldValue)
+                                            ) : (
+                                              <span className="italic">N/A</span>
+                                            )}
+                                          </div>
                                           {isProjectField && (
-                                            <span className="ml-2 text-green-600 font-medium">(Project)</span>
+                                            <span className="text-green-600 font-medium">(Project)</span>
                                           )}
                                         </div>
                                       </div>
-                                      
-                                      {/* Right side: Value */}
-                                      <div className="flex-shrink-0 text-right max-w-xs flex items-center justify-end">
-                                        <div className={`text-sm font-medium px-3 py-1 rounded border min-h-[32px] flex items-center ${
-                                          isProjectField 
-                                            ? 'bg-green-50/50 text-green-900' 
-                                            : 'bg-blue-50/50 text-blue-900'
-                                        }`}>
-                                          {fieldValue !== null && fieldValue !== undefined ? (
-                                            Array.isArray(fieldValue) 
-                                              ? fieldValue.join(', ')
-                                              : String(fieldValue)
-                                          ) : (
-                                            <span className="text-muted-foreground italic">N/A</span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
+                                    );
+                                  }
+
+                                  // Generic field component for other field types
+                                  return (
+                                    <GenericField
+                                      key={`${field.source}-${idx}`}
+                                      field={field}
+                                      fieldValue={fieldValue}
+                                      calculatedHeight={calculatedHeight}
+                                      isProjectField={isProjectField}
+                                      recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
+                                      tableName={isProjectField ? "Projects" : "LandPlots"}
+                                    />
                                   );
                                 })}
                               </div>
