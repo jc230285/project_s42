@@ -24,6 +24,9 @@ interface ProjectData {
   "Power Availability (Min)"?: string;
   "Power Availability (Max)"?: string;
   "Primary Project Partner"?: string;
+  cnqhs2etdnmy5rb?: number; // Project Priority
+  "Status From Project"?: string;
+  "Agent From Project"?: string;
 }
 
 interface ProjectsResponse {
@@ -122,8 +125,15 @@ function ProjectsPageContent() {
   const [schemaData, setSchemaData] = useState<any[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
   
-  // Sidebar state for filters
+  // Sidebar state for filters - automatically open when no sites are selected
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Effect to automatically open sidebar when no plots are selected
+  useEffect(() => {
+    if (selectedPlotIds.length === 0) {
+      setSidebarOpen(true);
+    }
+  }, [selectedPlotIds]);
   
   const [error, setError] = useState<string | null>(null);
 
@@ -513,6 +523,13 @@ function ProjectsPageContent() {
       });
     }
 
+    // Sort by Project Priority (cnqhs2etdnmy5rb) - higher priority first
+    filtered.sort((a, b) => {
+      const priorityA = a.cnqhs2etdnmy5rb || 0;
+      const priorityB = b.cnqhs2etdnmy5rb || 0;
+      return priorityB - priorityA; // Descending order (higher priority first)
+    });
+
     setFilteredProjects(filtered);
   };
 
@@ -718,79 +735,58 @@ function ProjectsPageContent() {
           />
           
           {/* Sidebar */}
-          <div className="absolute right-0 top-0 h-full w-96 bg-background border-l border-border shadow-xl overflow-y-auto">
-            {/* Sidebar Header */}
-            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Filters & Plot Selection</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSidebarOpen(false)}
-                className="h-8 w-8 p-0"
-              >
-                ✕
-              </Button>
-            </div>
+          <div className="absolute right-0 top-0 h-full w-96 md:w-1/2 md:min-w-96 bg-background border-l border-border shadow-xl overflow-y-auto custom-scrollbar">
+
 
             {/* Sidebar Content */}
-            <div className="p-4 space-y-6">
+            <div className="p-4 h-full flex flex-col">
               {/* Filtering Controls */}
-              <div>
-                <h3 className="text-md font-medium text-foreground mb-4">Filters</h3>
-                <div className="space-y-4">
-                  {/* Total Projects Display */}
-                  <div className="text-sm text-muted-foreground">
-                    {allProjects.length > 0 && (
-                      <>Total: {allProjects.length} projects</>
-                    )}
-                  </div>
-
-                  {/* Partner Dropdown */}
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Project Partner
-                    </label>
-                    <select
-                      value={selectedPartner}
-                      onChange={(e) => handlePartnerFilter(e.target.value)}
-                      className="w-full p-2 border border-border rounded-md bg-background text-foreground"
-                    >
-                      <option value="">All Partners</option>
-                      {projectPartners.map((partner) => (
-                        <option key={partner} value={partner}>
-                          {partner}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Search Input */}
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Search Projects
-                    </label>
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Search by name, country, partner..."
-                      className="w-full p-2 border border-border rounded-md bg-background text-foreground"
-                    />
-                  </div>
-
-                  {/* Clear Filters */}
-                  <Button
-                    onClick={clearFilters}
-                    variant="outline"
-                    className="w-full"
+              <div className="space-y-4 mb-6">
+                {/* Partner Dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Project Partner
+                  </label>
+                  <select
+                    value={selectedPartner}
+                    onChange={(e) => handlePartnerFilter(e.target.value)}
+                    className="w-full p-2 border border-border rounded-md bg-background text-foreground"
                   >
-                    Clear Filters
-                  </Button>
+                    <option value="">All Partners</option>
+                    {projectPartners.map((partner) => (
+                      <option key={partner} value={partner}>
+                        {partner}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
+                {/* Search Input */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Search Projects
+                  </label>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by name, country, partner..."
+                    className="w-full p-2 border border-border rounded-md bg-background text-foreground"
+                  />
+                </div>
+
+                {/* Clear Filters */}
+                <Button
+                  onClick={clearFilters}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Clear Filters
+                </Button>
               </div>
 
               {/* Plot Selection Section */}
-              <div>
+              <div className="flex flex-col flex-1 min-h-0">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-md font-medium text-foreground">Plot Selection</h3>
                   {selectedPlotIds.length > 0 && (
@@ -848,24 +844,16 @@ function ProjectsPageContent() {
 
                 {/* Projects List for Selection */}
                 {!loading && filteredProjects.length > 0 && (
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar">
                     {filteredProjects.map((project: ProjectData) => (
                       <div 
                         key={project.Id}
                         className="bg-muted/30 rounded-lg border border-border p-3"
                       >
-                        {/* Project Header */}
-                        <div className="mb-2">
-                          <div className="flex items-center gap-2 flex-wrap text-sm">
-                            {/* Project ID */}
-                            {project.P_PlotID && project.P_PlotID.length > 0 && (() => {
-                              const projectIds = [...new Set(project.P_PlotID.map(plot => plot.project_id).filter(Boolean))];
-                              return projectIds.length > 0 && (
-                                <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full border border-green-200 dark:bg-green-900 dark:text-green-200">
-                                  {projectIds[0]}
-                                </span>
-                              );
-                            })()}
+                        {/* Project Header with Priority, Status, Partner, Agent */}
+                        <div className="mb-3">
+                          <div className="flex items-center gap-2 flex-wrap text-sm mb-2">
+
                             
                             {/* Country Badge */}
                             {project.Country && (
@@ -873,34 +861,88 @@ function ProjectsPageContent() {
                                 {project.Country}
                               </span>
                             )}
+
                           </div>
                           
-                          <div className="font-medium text-foreground text-sm mt-1">
-                            {project['Project Name']}
-                          </div>
+
                         </div>
                         
-                        {/* Plots */}
+                        {/* Plots - Now Clickable */}
                         {project.P_PlotID && project.P_PlotID.length > 0 && (
                           <div className="space-y-2">
                             {project.P_PlotID.map((plot, index) => (
                               <div 
                                 key={index}
-                                className="bg-background/60 rounded-md p-2 border border-border/30"
+                                onClick={() => handlePlotSelection(plot.site_id, !selectedPlotIds.includes(plot.site_id))}
+                                className={`rounded-md p-3 border cursor-pointer transition-all duration-200 ${
+                                  selectedPlotIds.includes(plot.site_id)
+                                    ? 'bg-primary/10 border-primary/50 shadow-md'
+                                    : 'bg-background/60 border-border/30 hover:bg-background/80 hover:border-border/60'
+                                }`}
                               >
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedPlotIds.includes(plot.site_id)}
-                                    onChange={(e) => handlePlotSelection(plot.site_id, e.target.checked)}
-                                    className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-primary"
-                                  />
-                                  <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200">
-                                    {plot.site_id}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {plot.plot_name}
-                                  </span>
+                                <div className="flex items-center gap-3">
+                                  {/* Selection Indicator */}
+                                  <div className={`w-4 h-4 rounded-full border-2 transition-all duration-200 ${
+                                    selectedPlotIds.includes(plot.site_id)
+                                      ? 'bg-primary border-primary'
+                                      : 'border-muted-foreground'
+                                  }`}>
+                                    {selectedPlotIds.includes(plot.site_id) && (
+                                      <div className="w-full h-full rounded-full bg-white scale-50"></div>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                      <span className="text-sm font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200">
+                                        {plot.site_id}
+                                      </span>
+                                      <span className="text-sm text-foreground font-medium">
+                                        {plot.plot_name}
+                                      </span>
+                                      {/* Project ID and Project Name in same bubble */}
+                                      {project.P_PlotID && project.P_PlotID.length > 0 && (() => {
+                                        const projectIds = [...new Set(project.P_PlotID.map(plot => plot.project_id).filter(Boolean))];
+                                        return projectIds.length > 0 && (
+                                          <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full border border-green-200 dark:bg-green-900 dark:text-green-200">
+                                            {projectIds[0]} - {project['Project Name']}
+                                          </span>
+                                        );
+                                      })()}
+                                      {/* Project details inline at the end */}
+                                      {project.cnqhs2etdnmy5rb && (
+                                        <span className="text-xs text-muted-foreground">
+                                          Priority: {project.cnqhs2etdnmy5rb}
+                                        </span>
+                                      )}
+                                      {/* Power availability bubble */}
+                                      {(project["Power Availability (Min)"] || project["Power Availability (Max)"]) && (
+                                        <span className="inline-block bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full border border-orange-200 dark:bg-orange-900 dark:text-orange-200">
+                                          {project["Power Availability (Min)"] && project["Power Availability (Max)"] 
+                                            ? `${project["Power Availability (Min)"]}-${project["Power Availability (Max)"]} MW`
+                                            : project["Power Availability (Min)"] 
+                                              ? `${project["Power Availability (Min)"]} MW`
+                                              : `${project["Power Availability (Max)"]} MW`
+                                          }
+                                        </span>
+                                      )}
+                                      {project["Primary Project Partner"] && (
+                                        <span className="text-xs text-muted-foreground">
+                                          Partner: {project["Primary Project Partner"]}
+                                        </span>
+                                      )}
+                                      {project["Status From Project"] && (
+                                        <span className="text-xs text-muted-foreground">
+                                          Status: {project["Status From Project"]}
+                                        </span>
+                                      )}
+                                      {project["Agent From Project"] && (
+                                        <span className="text-xs text-muted-foreground">
+                                          Agent: {project["Agent From Project"]}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -915,6 +957,38 @@ function ProjectsPageContent() {
           </div>
         </div>
       )}
+
+      {/* Custom Scrollbar Styles */}
+      <style jsx global>{`
+        .custom-scrollbar {
+          scrollbar-width: thick;
+          scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 16px;
+          height: 16px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: hsl(var(--muted));
+          border-radius: 8px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: hsl(var(--muted-foreground));
+          border-radius: 8px;
+          border: 2px solid hsl(var(--muted));
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: hsl(var(--foreground));
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-corner {
+          background: hsl(var(--muted));
+        }
+      `}</style>
 
     </DashboardLayout>
   );

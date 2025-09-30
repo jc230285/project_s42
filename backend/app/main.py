@@ -369,7 +369,9 @@ def get_unique_project_partners(current_user: dict = Depends(get_current_user)):
         }
         
         # Make request to NocoDB API with SSL verification disabled for now
-        response = requests.get(api_url, headers=headers, verify=False)
+        # Add limit parameter to get all records
+        params = {"limit": 1000}  # Set high limit to get all projects
+        response = requests.get(api_url, headers=headers, params=params, verify=False)
         
         if response.status_code != 200:
             return JSONResponse(
@@ -454,7 +456,9 @@ def get_projects(current_user: dict = Depends(get_current_user), partner_filter:
         }
         
         # Make request to NocoDB API with SSL verification disabled for now
-        response = requests.get(api_url, headers=headers, verify=False)
+        # Add limit parameter to get all records
+        params = {"limit": 1000}  # Set high limit to get all projects
+        response = requests.get(api_url, headers=headers, params=params, verify=False)
         
         if response.status_code != 200:
             return JSONResponse(
@@ -475,9 +479,16 @@ def get_projects(current_user: dict = Depends(get_current_user), partner_filter:
         data = response.json()
         projects = data.get("list", [])
         
+        print(f"📊 Projects API: Retrieved {len(projects)} projects from NocoDB")
+        
         # Apply partner filter if provided
         if partner_filter and partner_filter.strip():
             projects = [p for p in projects if p.get("Primary Project Partner") == partner_filter]
+            print(f"📊 Projects API: After partner filter '{partner_filter}': {len(projects)} projects")
+        
+        # Sort projects by Project Priority (cnqhs2etdnmy5rb) - higher priority first
+        projects.sort(key=lambda x: x.get("cnqhs2etdnmy5rb", 0), reverse=True)
+        print(f"📊 Projects API: Sorted {len(projects)} projects by priority (cnqhs2etdnmy5rb)")
         
         # Helper function to parse plot information
         def parse_plot_info(plot_id_string):
@@ -526,7 +537,10 @@ def get_projects(current_user: dict = Depends(get_current_user), partner_filter:
             "P_PlotID",
             "Power Availability (Min)",
             "Power Availability (Max)",
-            "Primary Project Partner"
+            "Primary Project Partner",
+            "cnqhs2etdnmy5rb",  # Project Priority
+            "Status From Project",
+            "Agent From Project"
         ]
         
         filtered_projects = []
