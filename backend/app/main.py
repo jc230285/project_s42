@@ -486,9 +486,9 @@ def get_projects(current_user: dict = Depends(get_current_user), partner_filter:
             projects = [p for p in projects if p.get("Primary Project Partner") == partner_filter]
             print(f"📊 Projects API: After partner filter '{partner_filter}': {len(projects)} projects")
         
-        # Sort projects by Project Priority (cnqhs2etdnmy5rb) - higher priority first
-        projects.sort(key=lambda x: x.get("cnqhs2etdnmy5rb", 0), reverse=True)
-        print(f"📊 Projects API: Sorted {len(projects)} projects by priority (cnqhs2etdnmy5rb)")
+        # Sort projects by Project Priority - higher priority first
+        projects.sort(key=lambda x: x.get("Project Priority", 0), reverse=True)
+        print(f"📊 Projects API: Sorted {len(projects)} projects by priority (Project Priority)")
         
         # Helper function to parse plot information
         def parse_plot_info(plot_id_string):
@@ -538,9 +538,9 @@ def get_projects(current_user: dict = Depends(get_current_user), partner_filter:
             "Power Availability (Min)",
             "Power Availability (Max)",
             "Primary Project Partner",
-            "cnqhs2etdnmy5rb",  # Project Priority
-            "Status From Project",
-            "Agent From Project"
+            "Project Priority",  # Updated field name
+            "Status",  # Updated field name
+            "Agent"   # Updated field name
         ]
         
         filtered_projects = []

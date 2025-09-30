@@ -24,9 +24,9 @@ interface ProjectData {
   "Power Availability (Min)"?: string;
   "Power Availability (Max)"?: string;
   "Primary Project Partner"?: string;
-  cnqhs2etdnmy5rb?: number; // Project Priority
-  "Status From Project"?: string;
-  "Agent From Project"?: string;
+  "Project Priority"?: number; // Updated field name
+  "Status"?: string; // Updated field name
+  "Agent"?: string; // Updated field name
 }
 
 interface ProjectsResponse {
@@ -523,10 +523,10 @@ function ProjectsPageContent() {
       });
     }
 
-    // Sort by Project Priority (cnqhs2etdnmy5rb) - higher priority first
+    // Sort by Project Priority - higher priority first
     filtered.sort((a, b) => {
-      const priorityA = a.cnqhs2etdnmy5rb || 0;
-      const priorityB = b.cnqhs2etdnmy5rb || 0;
+      const priorityA = a["Project Priority"] || 0;
+      const priorityB = b["Project Priority"] || 0;
       return priorityB - priorityA; // Descending order (higher priority first)
     });
 
@@ -850,22 +850,8 @@ function ProjectsPageContent() {
                         key={project.Id}
                         className="bg-muted/30 rounded-lg border border-border p-3"
                       >
-                        {/* Project Header with Priority, Status, Partner, Agent */}
-                        <div className="mb-3">
-                          <div className="flex items-center gap-2 flex-wrap text-sm mb-2">
 
                             
-                            {/* Country Badge */}
-                            {project.Country && (
-                              <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
-                                {project.Country}
-                              </span>
-                            )}
-
-                          </div>
-                          
-
-                        </div>
                         
                         {/* Plots - Now Clickable */}
                         {project.P_PlotID && project.P_PlotID.length > 0 && (
@@ -910,9 +896,9 @@ function ProjectsPageContent() {
                                         );
                                       })()}
                                       {/* Project details inline at the end */}
-                                      {project.cnqhs2etdnmy5rb && (
+                                      {project["Project Priority"] && (
                                         <span className="text-xs text-muted-foreground">
-                                          Priority: {project.cnqhs2etdnmy5rb}
+                                          Priority: {project["Project Priority"]}
                                         </span>
                                       )}
                                       {/* Power availability bubble */}
@@ -931,16 +917,23 @@ function ProjectsPageContent() {
                                           Partner: {project["Primary Project Partner"]}
                                         </span>
                                       )}
-                                      {project["Status From Project"] && (
+                                      {project["Status"] && (
                                         <span className="text-xs text-muted-foreground">
-                                          Status: {project["Status From Project"]}
+                                          Status: {project["Status"]}
                                         </span>
                                       )}
-                                      {project["Agent From Project"] && (
+                                      {project["Agent"] && (
                                         <span className="text-xs text-muted-foreground">
-                                          Agent: {project["Agent From Project"]}
+                                          Agent: {project["Agent"]}
                                         </span>
                                       )}
+                            {/* Country Badge */}
+                            {project.Country && (
+                              <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
+                                {project.Country}
+                              </span>
+                            )}
+
                                     </div>
                                   </div>
                                 </div>
