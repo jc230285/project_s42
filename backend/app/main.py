@@ -246,7 +246,10 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     Verify user session via Authorization header
     Expected format: "Bearer {base64_encoded_user_info}"
     """
+    print(f"🔐 AUTH CHECK: {authorization}", flush=True)
+    
     if not authorization:
+        print("❌ NO AUTH HEADER", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header required",
@@ -1348,13 +1351,47 @@ def nocodb_sync_endpoint(current_user: dict = Depends(get_current_user)):
         )
 
 
+@app.on_event("startup")
+async def startup_event():
+    print("🚀 FastAPI STARTUP - execute_nocodb_query function loaded", flush=True)
+
 class NocoDBQuery(BaseModel):
     query: str
 
+print("🔧 DEFINING NOCODB QUERY FUNCTION", flush=True)
+
+# TEST ROUTE TO VERIFY MY MODIFICATIONS ARE WORKING
+@app.post("/test-debug-route", tags=["DEBUG"])
+async def test_debug_route():
+    return {"test": "MY_MODIFICATIONS_ARE_WORKING", "message": "This confirms the file is being loaded"}
+
 @app.post("/nocodb/query", tags=["NocoDB"])
 async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = Depends(get_current_user)):
-    """Execute a query against NocoDB and return aggregated results"""
+    """Execute a query against NocoDB and return results"""
+    
+    # ALWAYS RETURN DEBUG - TEST THE QUERY CONTENT
+    return JSONResponse(content={
+        "success": True,
+        "rows": [],
+        "debug": "ALWAYS_RETURN_DEBUG",
+        "query": query_request.query,
+        "query_length": len(query_request.query) if query_request.query else 0,
+        "contains_view": "v_HoyangerEnergyReport" in query_request.query if query_request.query else False,
+        "query_repr": repr(query_request.query) if query_request.query else "None"
+    })
+    
+    print(f"🚀 NOCODB QUERY ENDPOINT CALLED", flush=True)
+    print(f"🔍 Received query request: '{query_request.query}'", flush=True)
+    print(f"👤 Current user: {current_user}", flush=True)
+    
+    # Debug the query detection  
+    if "v_HoyangerEnergyReport" in query_request.query:
+        print(f"⚡ DETECTED VIEW QUERY - EXECUTING SQL DIRECTLY", flush=True)
+    else:
+        print(f"📊 REGULAR QUERY - USING NOCODB API", flush=True)
+    
     try:
+        
         # Get user's personal API token if available, otherwise use environment token
         user_token = None
         user_email = current_user.get('email')
@@ -1380,10 +1417,71 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
 
         # Use user token if available, otherwise fall back to environment token
         api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        if not api_token:
+            return JSONResponse(
+                content={"error": "NocoDB API token missing"},
+                status_code=500
+            )
+
+        # Check if this is a direct SQL query (contains v_HoyangerEnergyReport view)
+        if "v_HoyangerEnergyReport" in query_request.query:
+            print(f"🔍 Executing SQL query: {query_request.query}")
+            # Execute direct SQL query against the database
+            try:
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                
+                # Execute the query directly
+                cursor.execute(query_request.query)
+                rows = cursor.fetchall()
+                
+                print(f"✅ SQL query executed successfully, got {len(rows)} rows")
+                if rows:
+                    print(f"📋 First row keys: {list(rows[0].keys())}")
+                
+                # Convert decimal and datetime objects to JSON serializable format
+                result_rows = []
+                for row in rows:
+                    converted_row = {}
+                    for key, value in row.items():
+                        if isinstance(value, Decimal):
+                            converted_row[key] = float(value)
+                        elif isinstance(value, (datetime, date)):
+                            converted_row[key] = value.isoformat()
+                        else:
+                            converted_row[key] = value
+                    result_rows.append(converted_row)
+                
+                cursor.close()
+                conn.close()
+                
+                print(f"🎯 Returning {len(result_rows)} converted rows")
+                return JSONResponse(content={
+                    "success": True,
+                    "rows": result_rows,
+                    "total_records": len(result_rows),
+                    "source": "direct_sql_query"
+                })
+                
+            except Exception as e:
+                print(f"❌ SQL query error: {str(e)}")
+                return JSONResponse(
+                    content={"error": f"SQL query error: {str(e)}"},
+                    status_code=500
+                )
+
+        # Fall back to original table-based logic for other queries
         nocodb_api_url = os.getenv("NOCODB_API_URL", "https://nocodb.edbmotte.com")
         base_id = os.getenv("NOCODB_BASE_ID")
 
-        if not api_token or not base_id:
+        if not base_id:
             return JSONResponse(
                 content={"error": "NocoDB configuration missing"},
                 status_code=500
@@ -1499,7 +1597,12 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
             "success": True,
             "rows": result_rows,
             "total_days": len(result_rows),
-            "source": "nocodb_aggregated"
+            "source": "nocodb_aggregated",
+            "debug": "MODIFIED_FUNCTION_VERSION_1.0",
+            "query_request_type": str(type(query_request)),
+            "query_request_dict": str(query_request.__dict__) if hasattr(query_request, '__dict__') else "NO_DICT",
+            "has_query_attr": hasattr(query_request, 'query'),
+            "query_value": getattr(query_request, 'query', 'NO_QUERY_ATTR') if hasattr(query_request, 'query') else 'NO_QUERY_ATTR'
         })
 
     except Exception as e:

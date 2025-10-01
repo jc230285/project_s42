@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🚀 FRONTEND PROXY: nocodb/query endpoint called');
+    
     // Get authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
@@ -11,6 +13,8 @@ export async function POST(request: NextRequest) {
     // Parse the request body
     const body = await request.json();
     const { query } = body;
+    
+    console.log('🔍 FRONTEND PROXY: Query received:', query);
 
     if (!query) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
@@ -18,6 +22,8 @@ export async function POST(request: NextRequest) {
 
     // Forward request to backend using internal Docker network URL
     const backendUrl = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    console.log('🎯 FRONTEND PROXY: Forwarding to backend at:', backendUrl);
+    
     const response = await fetch(`${backendUrl}/nocodb/query`, {
       method: 'POST',
       headers: {
@@ -26,6 +32,8 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({ query }),
     });
+
+    console.log('📡 FRONTEND PROXY: Backend response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -37,6 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
+    console.log('✅ FRONTEND PROXY: Backend response received, returning data');
     return NextResponse.json(data);
 
   } catch (error) {

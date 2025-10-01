@@ -267,11 +267,13 @@ function ProjectsPageContent() {
     setCollapsedActivityTimelines(prev => {
       const newSet = new Set(prev);
       if (newSet.has(plotId)) {
-        newSet.delete(plotId);
+        // If this plot is collapsed, expand all plots (clear the set)
+        return new Set();
       } else {
-        newSet.add(plotId);
+        // If this plot is expanded, collapse all plots (add all plot IDs)
+        const allPlotIds = plotsData?.plots?.map((plot: any) => plot.id) || [];
+        return new Set(allPlotIds);
       }
-      return newSet;
     });
   };
 
@@ -707,6 +709,7 @@ function ProjectsPageContent() {
                               onToggleSubcategory={handleToggleSubcategory}
                               collapsedActivityTimelines={collapsedActivityTimelines}
                               onToggleActivityTimeline={handleToggleActivityTimeline}
+                              onDataUpdate={refreshPlotsData}
                             />
                           );
                         });
@@ -799,7 +802,7 @@ function ProjectsPageContent() {
                 <div className="text-sm text-muted-foreground mb-4">
                   {!loading && filteredProjects.length > 0 && (
                     <>
-                      Showing {filteredProjects.length} of {allProjects.length} projects
+                      Showing {filteredProjects.length} projects
                       {selectedPartner && ` • Partner: ${selectedPartner}`}
                       {searchTerm && ` • Search: "${searchTerm}"`}
                     </>
@@ -848,7 +851,7 @@ function ProjectsPageContent() {
                     {filteredProjects.map((project: ProjectData) => (
                       <div 
                         key={project.Id}
-                        className="bg-muted/30 rounded-lg border border-border p-3"
+                        className="bg-muted/30 rounded-lg border border-border p-1"
                       >
 
                             
@@ -860,7 +863,7 @@ function ProjectsPageContent() {
                               <div 
                                 key={index}
                                 onClick={() => handlePlotSelection(plot.site_id, !selectedPlotIds.includes(plot.site_id))}
-                                className={`rounded-md p-3 border cursor-pointer transition-all duration-200 ${
+                                className={`rounded-md p-1 border cursor-pointer transition-all duration-200 ${
                                   selectedPlotIds.includes(plot.site_id)
                                     ? 'bg-primary/10 border-primary/50 shadow-md'
                                     : 'bg-background/60 border-border/30 hover:bg-background/80 hover:border-border/60'
@@ -896,11 +899,6 @@ function ProjectsPageContent() {
                                         );
                                       })()}
                                       {/* Project details inline at the end */}
-                                      {project["Project Priority"] && (
-                                        <span className="text-xs text-muted-foreground">
-                                          Priority: {project["Project Priority"]}
-                                        </span>
-                                      )}
                                       {/* Power availability bubble */}
                                       {(project["Power Availability (Min)"] || project["Power Availability (Max)"]) && (
                                         <span className="inline-block bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full border border-orange-200 dark:bg-orange-900 dark:text-orange-200">
@@ -910,11 +908,6 @@ function ProjectsPageContent() {
                                               ? `${project["Power Availability (Min)"]} MW`
                                               : `${project["Power Availability (Max)"]} MW`
                                           }
-                                        </span>
-                                      )}
-                                      {project["Primary Project Partner"] && (
-                                        <span className="text-xs text-muted-foreground">
-                                          Partner: {project["Primary Project Partner"]}
                                         </span>
                                       )}
                                       {project["Status"] && (

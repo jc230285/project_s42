@@ -30,6 +30,10 @@ interface WiseAccountsData {
   };
 }
 
+interface HoyangerEnergyRecord {
+  [key: string]: any; // Flexible to handle all fields from the view
+}
+
 interface PowerDataRecord {
   date: string;
   hourly_records: number;
@@ -59,6 +63,7 @@ function HoyangerPageContent() {
   const router = useRouter();
   const [wiseAccountsData, setWiseAccountsData] = useState<WiseAccountsData | null>(null);
   const [powerData, setPowerData] = useState<PowerDataRecord[]>([]);
+  const [energyReportData, setEnergyReportData] = useState<HoyangerEnergyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [powerDataLoading, setPowerDataLoading] = useState(true);
 
@@ -110,16 +115,16 @@ function HoyangerPageContent() {
   }, [session]);
 
   useEffect(() => {
-    const fetchPowerData = async () => {
-      console.log('🔄 Fetching power data...');
+    const fetchEnergyReportData = async () => {
+      console.log('🔄 Fetching energy report data...');
       try {
         if (!session?.user?.email) {
-          console.log('❌ No session or email, skipping power data fetch');
+          console.log('❌ No session or email, skipping energy report data fetch');
           setPowerDataLoading(false);
           return;
         }
 
-        console.log('✅ Session found, proceeding with power data fetch');
+        console.log('✅ Session found, proceeding with energy report data fetch');
 
         // Create authorization header
         const userInfo = {
@@ -131,7 +136,7 @@ function HoyangerPageContent() {
 
         console.log('📡 Making request to /api/proxy/nocodb');
 
-        // Fetch power data from NocoDB - Daily aggregated data for last 70 days
+        // Fetch power data from NocoDB - Using the v_HoyangerEnergyReport view
         const response = await fetch('/api/proxy/nocodb', {
           method: 'POST',
           headers: {
@@ -139,26 +144,7 @@ function HoyangerPageContent() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            query: `
-              SELECT
-                DATE(timestamp) as date,
-                COUNT(*) as hourly_records,
-                ROUND(AVG(\`1A\`), 2) as avg_1A,
-                ROUND(AVG(\`1B\`), 2) as avg_1B,
-                ROUND(AVG(\`2A\`), 2) as avg_2A,
-                ROUND(AVG(\`2B\`), 2) as avg_2B,
-                ROUND(AVG(\`3A\`), 2) as avg_3A,
-                ROUND(AVG(\`3B\`), 2) as avg_3B,
-                ROUND(AVG(\`4M3\`), 2) as avg_4M3,
-                ROUND(AVG(\`5M2\`), 2) as avg_5M2,
-                ROUND(AVG(ph), 2) as avg_ph,
-                MIN(timestamp) as first_reading,
-                MAX(timestamp) as last_reading
-              FROM \`Hoyanger Power Data\`
-              WHERE timestamp >= DATE_SUB(CURDATE(), INTERVAL 70 DAY)
-              GROUP BY DATE(timestamp)
-              ORDER BY date DESC
-            `
+            query: `SELECT * FROM \`v_HoyangerEnergyReport\``
           })
         });
 
@@ -166,24 +152,31 @@ function HoyangerPageContent() {
 
         if (response.ok) {
           const data = await response.json();
-          console.log('✅ Power data received:', data);
-          console.log('✅ Power data rows:', data.rows);
-          console.log('✅ Power data rows length:', data.rows?.length);
-          setPowerData(data.rows || []);
+          console.log('✅ Energy report data received:', data);
+          console.log('✅ Energy report rows:', data.rows);
+          console.log('✅ Energy report rows length:', data.rows?.length);
+          
+          // Show all fields for the first record to understand the structure
+          if (data.rows && data.rows.length > 0) {
+            console.log('📋 First record fields:', Object.keys(data.rows[0]));
+            console.log('📋 First record data:', data.rows[0]);
+          }
+          
+          setEnergyReportData(data.rows || []);
         } else {
           const errorText = await response.text();
-          console.error('❌ Failed to fetch power data:', response.status, response.statusText, errorText);
+          console.error('❌ Failed to fetch energy report data:', response.status, response.statusText, errorText);
         }
       } catch (error) {
-        console.error('💥 Error fetching power data:', error);
+        console.error('💥 Error fetching energy report data:', error);
       } finally {
         setPowerDataLoading(false);
       }
     };
 
     if (session) {
-      console.log('🚀 Session available, attempting to fetch power data');
-      fetchPowerData();
+      console.log('🚀 Session available, attempting to fetch energy report data');
+      fetchEnergyReportData();
     } else {
       console.log('⏳ No session yet, waiting...');
     }
@@ -204,7 +197,7 @@ function HoyangerPageContent() {
     return null;
   }
 
-  console.log('🔍 Power data state:', { powerData, powerDataLoading, powerDataLength: powerData.length });
+  console.log('🔍 Energy report data state:', { energyReportData, powerDataLoading, energyReportDataLength: energyReportData.length });
 
   return (
     <DashboardLayout>
@@ -406,109 +399,225 @@ function HoyangerPageContent() {
           </div>
         </div>
 
-        {/* Power Data Section */}
+        {/* Energy Report Data Section */}
         <div className="bg-card shadow-sm rounded-lg p-6 border border-border">
-          <h2 className="text-lg font-medium text-foreground mb-4">Hoyanger Power Data</h2>
+          <h2 className="text-lg font-medium text-foreground mb-4">Hoyanger Energy Report (v_HoyangerEnergyReport)</h2>
           
           {powerDataLoading ? (
             <div className="text-center py-4">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-              <p className="mt-2 text-muted-foreground">Loading power data...</p>
+              <p className="mt-2 text-muted-foreground">Loading energy report data...</p>
             </div>
-          ) : powerData.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-border">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Hours
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      1A
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      1B
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      2A
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      2B
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      3A
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      3B
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      4M3
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      5M2
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      pH
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-card divide-y divide-border">
-                  {powerData.map((record, index) => (
-                    <tr key={index} className="hover:bg-muted/50">
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground font-mono">
-                        {new Date(record.date).toLocaleDateString('en-GB')}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record.hourly_records}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["1a"] !== null && record["1a"] !== undefined ? record["1a"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["1b"] !== null && record["1b"] !== undefined ? record["1b"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["2a"] !== null && record["2a"] !== undefined ? record["2a"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["2b"] !== null && record["2b"] !== undefined ? record["2b"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["3a"] !== null && record["3a"] !== undefined ? record["3a"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["3b"] !== null && record["3b"] !== undefined ? record["3b"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["4m3"] !== null && record["4m3"] !== undefined ? record["4m3"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record["5m2"] !== null && record["5m2"] !== undefined ? record["5m2"].toFixed(2) : '-'}
-                      </td>
-                      <td className="px-3 py-4 whitespace-nowrap text-sm text-foreground">
-                        {record.ph !== null && record.ph !== undefined ? (
-                          <span className={`font-medium ${
-                            record.ph >= 7 && record.ph <= 14 ? 'text-blue-600' : 
-                            record.ph >= 0 && record.ph < 7 ? 'text-orange-600' : 
-                            'text-red-600'
-                          }`}>
-                            {record.ph.toFixed(3)}
-                          </span>
-                        ) : '-'}
-                      </td>
-                    </tr>
+          ) : energyReportData.length > 0 ? (
+            <div className="space-y-6">
+              {/* Key Metrics Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                  <h4 className="font-medium text-blue-800 dark:text-blue-200 text-sm mb-1">Latest Date</h4>
+                  <p className="text-lg font-bold text-blue-900 dark:text-blue-100">{energyReportData[0]?.date || 'N/A'}</p>
+                </div>
+                <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border border-green-200 dark:border-green-700">
+                  <h4 className="font-medium text-green-800 dark:text-green-200 text-sm mb-1">Total Wh (Latest)</h4>
+                  <p className="text-lg font-bold text-green-900 dark:text-green-100">{energyReportData[0]?.total_Wh ? energyReportData[0].total_Wh.toFixed(2) : 'N/A'}</p>
+                </div>
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-4 border border-purple-200 dark:border-purple-700">
+                  <h4 className="font-medium text-purple-800 dark:text-purple-200 text-sm mb-1">Avg Watts (Latest)</h4>
+                  <p className="text-lg font-bold text-purple-900 dark:text-purple-100">{energyReportData[0]?.avg_W ? energyReportData[0].avg_W.toFixed(2) : 'N/A'}</p>
+                </div>
+                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-700">
+                  <h4 className="font-medium text-yellow-800 dark:text-yellow-200 text-sm mb-1">USD Equivalent</h4>
+                  <p className="text-lg font-bold text-yellow-900 dark:text-yellow-100">${energyReportData[0]?.usd_equivalent ? energyReportData[0].usd_equivalent.toFixed(2) : 'N/A'}</p>
+                </div>
+                <div className={`rounded-lg p-4 border ${(() => {
+                  const latestRecord = energyReportData[0];
+                  if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-700';
+                  const nokToUsd = latestRecord.total_Wh_converted / 10.85; // Approximate NOK to USD conversion
+                  const profit = latestRecord.usd_equivalent - nokToUsd;
+                  return profit >= 0 
+                    ? 'bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-emerald-200 dark:border-emerald-700'
+                    : 'bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border-red-200 dark:border-red-700';
+                })()}`}>
+                  <h4 className={`font-medium text-sm mb-1 ${(() => {
+                    const latestRecord = energyReportData[0];
+                    if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'text-gray-800 dark:text-gray-200';
+                    const nokToUsd = latestRecord.total_Wh_converted / 10.85;
+                    const profit = latestRecord.usd_equivalent - nokToUsd;
+                    return profit >= 0 ? 'text-emerald-800 dark:text-emerald-200' : 'text-red-800 dark:text-red-200';
+                  })()}`}>Profit/Loss</h4>
+                  <p className={`text-lg font-bold ${(() => {
+                    const latestRecord = energyReportData[0];
+                    if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'text-gray-900 dark:text-gray-100';
+                    const nokToUsd = latestRecord.total_Wh_converted / 10.85;
+                    const profit = latestRecord.usd_equivalent - nokToUsd;
+                    return profit >= 0 ? 'text-emerald-900 dark:text-emerald-100' : 'text-red-900 dark:text-red-100';
+                  })()}`}>
+                    {(() => {
+                      const latestRecord = energyReportData[0];
+                      if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'N/A';
+                      const nokToUsd = latestRecord.total_Wh_converted / 10.85;
+                      const profit = latestRecord.usd_equivalent - nokToUsd;
+                      return `$${profit.toFixed(2)}`;
+                    })()}
+                  </p>
+                </div>
+                <div className={`rounded-lg p-4 border ${(() => {
+                  const latestRecord = energyReportData[0];
+                  if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-700';
+                  const nokToUsd = latestRecord.total_Wh_converted / 10.85;
+                  const profit = latestRecord.usd_equivalent - nokToUsd;
+                  const profitPercentage = (profit / nokToUsd) * 100;
+                  return profitPercentage >= 0 
+                    ? 'bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-emerald-200 dark:border-emerald-700'
+                    : 'bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border-red-200 dark:border-red-700';
+                })()}`}>
+                  <h4 className={`font-medium text-sm mb-1 ${(() => {
+                    const latestRecord = energyReportData[0];
+                    if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'text-gray-800 dark:text-gray-200';
+                    const nokToUsd = latestRecord.total_Wh_converted / 10.85;
+                    const profit = latestRecord.usd_equivalent - nokToUsd;
+                    const profitPercentage = (profit / nokToUsd) * 100;
+                    return profitPercentage >= 0 ? 'text-emerald-800 dark:text-emerald-200' : 'text-red-800 dark:text-red-200';
+                  })()}`}>Profit %</h4>
+                  <p className={`text-lg font-bold ${(() => {
+                    const latestRecord = energyReportData[0];
+                    if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'text-gray-900 dark:text-gray-100';
+                    const nokToUsd = latestRecord.total_Wh_converted / 10.85;
+                    const profit = latestRecord.usd_equivalent - nokToUsd;
+                    const profitPercentage = (profit / nokToUsd) * 100;
+                    return profitPercentage >= 0 ? 'text-emerald-900 dark:text-emerald-100' : 'text-red-900 dark:text-red-100';
+                  })()}`}>
+                    {(() => {
+                      const latestRecord = energyReportData[0];
+                      if (!latestRecord?.total_Wh_converted || !latestRecord?.usd_equivalent) return 'N/A';
+                      const nokToUsd = latestRecord.total_Wh_converted / 10.85;
+                      const profit = latestRecord.usd_equivalent - nokToUsd;
+                      const profitPercentage = (profit / nokToUsd) * 100;
+                      return `${profitPercentage >= 0 ? '+' : ''}${profitPercentage.toFixed(2)}%`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Fields Overview */}
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h3 className="font-medium text-foreground mb-2">Available Fields ({Object.keys(energyReportData[0]).length})</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+                  {Object.keys(energyReportData[0]).map((field, index) => (
+                    <div key={index} className="bg-card px-3 py-1 rounded border text-foreground font-mono">
+                      {field}
+                    </div>
                   ))}
-                </tbody>
-              </table>
-              <div className="mt-4 text-sm text-muted-foreground">
-                Showing first daily record for the last 70 days. Data refreshes automatically.
+                </div>
+              </div>
+
+              {/* Data Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-muted">
+                    <tr>
+                      {Object.keys(energyReportData[0]).map((field) => (
+                        <th key={field} className={`px-3 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                          field === 'date' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' :
+                          field === 'total_Wh' || field === 'total_Wh_converted' || field === 'avg_W' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' :
+                          field === 'S19_Watts' || field.includes('Ratio') ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200' :
+                          field === 'currency_amount' || field === 'usd_equivalent' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200' :
+                          'bg-muted text-muted-foreground'
+                        }`}>
+                          {field}
+                        </th>
+                      ))}
+                      {/* Add calculated columns */}
+                      <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200">
+                        Cost_USD
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200">
+                        Profit_USD
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200">
+                        Profit_%
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-card divide-y divide-border">
+                    {energyReportData.map((record, index) => (
+                      <tr key={index} className="hover:bg-muted/50">
+                        {Object.entries(record).map(([field, value], fieldIndex) => (
+                          <td key={fieldIndex} className={`px-3 py-4 whitespace-nowrap text-sm ${
+                            field === 'date' ? 'font-mono font-bold text-blue-700 dark:text-blue-300' :
+                            field === 'total_Wh' || field === 'total_Wh_converted' || field === 'avg_W' ? 'font-bold text-green-700 dark:text-green-300' :
+                            field === 'S19_Watts' || field.includes('Ratio') ? 'font-bold text-purple-700 dark:text-purple-300' :
+                            field === 'currency_amount' || field === 'usd_equivalent' ? 'font-bold text-yellow-700 dark:text-yellow-300' :
+                            field.includes('_W') ? 'text-orange-600 dark:text-orange-400' :
+                            'text-foreground'
+                          }`}>
+                            {value !== null && value !== undefined ? (
+                              typeof value === 'number' ? (
+                                field.toLowerCase().includes('date') || field.toLowerCase().includes('time') ? 
+                                  new Date(value).toLocaleString() :
+                                field === 'total_Wh' || field === 'total_Wh_converted' || field === 'avg_W' ? 
+                                  value.toFixed(2) :
+                                field === 'S19_Watts' ? 
+                                  value.toString() :
+                                field.includes('Ratio') || field === 'currency_amount' || field === 'usd_equivalent' ? 
+                                  value.toFixed(6) :
+                                field === 'ph' ? 
+                                  value.toFixed(7) :
+                                field.includes('_W') ? 
+                                  value.toFixed(1) :
+                                value % 1 !== 0 ? value.toFixed(3) : value.toString()
+                              ) : (
+                                field.toLowerCase().includes('date') || field.toLowerCase().includes('time') ? 
+                                  new Date(value).toLocaleString() : 
+                                  value.toString()
+                              )
+                            ) : (
+                              <span className="text-muted-foreground">NULL</span>
+                            )}
+                          </td>
+                        ))}
+                        {/* Add calculated columns */}
+                        <td className="px-3 py-4 whitespace-nowrap text-sm font-bold text-orange-700 dark:text-orange-300">
+                          {record.total_Wh_converted ? `$${(record.total_Wh_converted / 10.85).toFixed(6)}` : 'N/A'}
+                        </td>
+                        <td className={`px-3 py-4 whitespace-nowrap text-sm font-bold ${(() => {
+                          if (!record.total_Wh_converted || !record.usd_equivalent) return 'text-gray-500';
+                          const nokToUsd = record.total_Wh_converted / 10.85;
+                          const profit = record.usd_equivalent - nokToUsd;
+                          return profit >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300';
+                        })()}`}>
+                          {(() => {
+                            if (!record.total_Wh_converted || !record.usd_equivalent) return 'N/A';
+                            const nokToUsd = record.total_Wh_converted / 10.85;
+                            const profit = record.usd_equivalent - nokToUsd;
+                            return `$${profit.toFixed(6)}`;
+                          })()}
+                        </td>
+                        <td className={`px-3 py-4 whitespace-nowrap text-sm font-bold ${(() => {
+                          if (!record.total_Wh_converted || !record.usd_equivalent) return 'text-gray-500';
+                          const nokToUsd = record.total_Wh_converted / 10.85;
+                          const profit = record.usd_equivalent - nokToUsd;
+                          const profitPercentage = (profit / nokToUsd) * 100;
+                          return profitPercentage >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300';
+                        })()}`}>
+                          {(() => {
+                            if (!record.total_Wh_converted || !record.usd_equivalent) return 'N/A';
+                            const nokToUsd = record.total_Wh_converted / 10.85;
+                            const profit = record.usd_equivalent - nokToUsd;
+                            const profitPercentage = (profit / nokToUsd) * 100;
+                            return `${profitPercentage >= 0 ? '+' : ''}${profitPercentage.toFixed(2)}%`;
+                          })()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="mt-4 text-sm text-muted-foreground">
+                  Showing all {energyReportData.length} records from v_HoyangerEnergyReport view.
+                </div>
               </div>
             </div>
           ) : (
-            <p className="text-muted-foreground">No power data available.</p>
+            <p className="text-muted-foreground">No energy report data available.</p>
           )}
         </div>
 

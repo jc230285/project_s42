@@ -92,6 +92,8 @@ interface PlotDisplayProps {
   onToggleSubcategory: (key: string) => void;
   collapsedActivityTimelines: Set<number>;
   onToggleActivityTimeline: (plotId: number) => void;
+  // Data refresh callback
+  onDataUpdate?: () => void;
 }
 
 // SingleLineTextField Component
@@ -102,6 +104,7 @@ interface SingleLineTextFieldProps {
   isProjectField: boolean;
   recordId: number;
   tableName: string;
+  onDataUpdate?: () => void;
 }
 
 const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
@@ -110,12 +113,20 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
   calculatedHeight,
   isProjectField,
   recordId,
-  tableName
+  tableName,
+  onDataUpdate
 }) => {
   const { data: session } = useSession();
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [displayValue, setDisplayValue] = useState(fieldValue);
+
+  // Sync displayValue with fieldValue prop changes
+  useEffect(() => {
+    setDisplayValue(fieldValue);
+    setEditValue(fieldValue || '');
+  }, [fieldValue]);
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -161,19 +172,28 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
       const result = await response.json();
       console.log('Field updated successfully:', result);
       
+      // Update local display value immediately for better UX
+      setDisplayValue(editValue);
       setIsEditing(false);
       toast.success(`${field["Field Name"]} updated!`);
+      
+      // Trigger data refresh to sync with backend
+      if (onDataUpdate) {
+        onDataUpdate();
+      }
       
     } catch (error) {
       console.error('Error updating field:', error);
       toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Reset to original value on error
+      setEditValue(displayValue || '');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleCancel = () => {
-    setEditValue(fieldValue || '');
+    setEditValue(displayValue || '');
     setIsEditing(false);
   };
 
@@ -220,9 +240,9 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
               isProjectField ? 'text-green-700' : 'text-blue-700'
             }`}
           >
-            {fieldValue !== null && fieldValue !== undefined && String(fieldValue).trim() !== '' ? (
+            {displayValue !== null && displayValue !== undefined && String(displayValue).trim() !== '' ? (
               <span className="font-medium whitespace-pre-wrap break-words">
-                {String(fieldValue)}
+                {String(displayValue)}
               </span>
             ) : (
               <span className="text-muted-foreground italic">Click to edit</span>
@@ -242,6 +262,7 @@ interface LongTextFieldProps {
   isProjectField: boolean;
   recordId: number;
   tableName: string;
+  onDataUpdate?: () => void;
 }
 
 const LongTextField: React.FC<LongTextFieldProps> = ({
@@ -250,12 +271,20 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   calculatedHeight,
   isProjectField,
   recordId,
-  tableName
+  tableName,
+  onDataUpdate
 }) => {
   const { data: session } = useSession();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [displayValue, setDisplayValue] = useState(fieldValue);
+
+  // Sync displayValue with fieldValue prop changes
+  useEffect(() => {
+    setDisplayValue(fieldValue);
+    setEditValue(fieldValue || '');
+  }, [fieldValue]);
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -305,22 +334,31 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
       const result = await response.json();
       console.log('Field updated successfully:', result);
       
+      // Update local display value immediately for better UX
+      setDisplayValue(editValue);
       // Close modal and show success toast
       setIsModalOpen(false);
       toast.dismiss(loadingToast);
       toast.success(`${field["Field Name"]} updated successfully!`);
       
+      // Trigger data refresh to sync with backend
+      if (onDataUpdate) {
+        onDataUpdate();
+      }
+      
     } catch (error) {
       console.error('Error updating field:', error);
       toast.dismiss(loadingToast);
       toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Reset to original value on error
+      setEditValue(displayValue || '');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleCancel = () => {
-    setEditValue(fieldValue || '');
+    setEditValue(displayValue || '');
     setIsModalOpen(false);
   };
 
@@ -349,7 +387,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
         
         {/* Rich text preview - below field name */}
         <div className="text-xs text-muted-foreground">
-          {fieldValue ? (
+          {displayValue ? (
             <div className="prose prose-sm max-w-none prose-invert">
               <div
                 className="whitespace-pre-wrap break-words break-all hyphens-auto leading-relaxed overflow-auto max-h-64 pr-1"
@@ -357,7 +395,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word'
                 }}
-                dangerouslySetInnerHTML={{ __html: fieldValue }}
+                dangerouslySetInnerHTML={{ __html: displayValue }}
               />
             </div>
           ) : (
@@ -431,6 +469,7 @@ interface GenericFieldProps {
   isProjectField: boolean;
   recordId: number;
   tableName: string;
+  onDataUpdate?: () => void;
 }
 
 const GenericField: React.FC<GenericFieldProps> = ({
@@ -439,12 +478,20 @@ const GenericField: React.FC<GenericFieldProps> = ({
   calculatedHeight,
   isProjectField,
   recordId,
-  tableName
+  tableName,
+  onDataUpdate
 }) => {
   const { data: session } = useSession();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [displayValue, setDisplayValue] = useState(fieldValue);
+
+  // Sync displayValue with fieldValue prop changes
+  useEffect(() => {
+    setDisplayValue(fieldValue);
+    setEditValue(fieldValue || '');
+  }, [fieldValue]);
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -494,22 +541,31 @@ const GenericField: React.FC<GenericFieldProps> = ({
       const result = await response.json();
       console.log('Field updated successfully:', result);
       
+      // Update local display value immediately for better UX
+      setDisplayValue(editValue);
       // Close modal and show success toast
       setIsModalOpen(false);
       toast.dismiss(loadingToast);
       toast.success(`${field["Field Name"]} updated successfully!`);
       
+      // Trigger data refresh to sync with backend
+      if (onDataUpdate) {
+        onDataUpdate();
+      }
+      
     } catch (error) {
       console.error('Error updating field:', error);
       toast.dismiss(loadingToast);
       toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Reset to original value on error
+      setEditValue(displayValue || '');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleCancel = () => {
-    setEditValue(fieldValue || '');
+    setEditValue(displayValue || '');
     setIsModalOpen(false);
   };
 
@@ -577,7 +633,7 @@ const GenericField: React.FC<GenericFieldProps> = ({
         
         {/* Field value - below field name */}
         <div className="text-xs text-muted-foreground">
-          {formatDisplayValue(fieldValue, field.Type)}
+          {formatDisplayValue(displayValue, field.Type)}
         </div>
       </div>
 
@@ -659,6 +715,7 @@ interface SingleSelectFieldProps {
   isProjectField: boolean;
   recordId: number;
   tableName: string;
+  onDataUpdate?: () => void;
 }
 
 const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
@@ -667,12 +724,20 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
   calculatedHeight,
   isProjectField,
   recordId,
-  tableName
+  tableName,
+  onDataUpdate
 }) => {
   const { data: session } = useSession();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [displayValue, setDisplayValue] = useState(fieldValue);
+
+  // Sync displayValue with fieldValue prop changes
+  useEffect(() => {
+    setDisplayValue(fieldValue);
+    setEditValue(fieldValue || '');
+  }, [fieldValue]);
   const [options, setOptions] = useState<string[]>([]);
 
   // Parse options from field Options string
@@ -747,9 +812,18 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
             const actualValue = verifyData.value;
             
             if (actualValue === editValue) {
+              // Update local display value immediately for better UX
+              setDisplayValue(editValue);
               toast.success(`${field["Field Name"]} updated successfully!`);
+              
+              // Trigger data refresh to sync with backend
+              if (onDataUpdate) {
+                onDataUpdate();
+              }
             } else {
               toast.error(`Failed to update ${field["Field Name"]}: Value not accepted by database`);
+              // Reset to original value on error
+              setEditValue(displayValue || '');
             }
           } else {
             toast.error(`${field["Field Name"]} update status unclear. Please refresh to verify changes.`);
@@ -773,7 +847,7 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
   };
 
   const handleCancel = () => {
-    setEditValue(fieldValue || '');
+    setEditValue(displayValue || '');
     setIsModalOpen(false);
   };
 
@@ -790,7 +864,7 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
           {field["Field Name"]}
         </div>
         <div className="text-xs text-muted-foreground">
-          {fieldValue || 'Click to select option...'}
+          {displayValue || 'Click to select option...'}
         </div>
       </div>
 
@@ -877,6 +951,7 @@ interface MultiSelectFieldProps {
   isProjectField: boolean;
   recordId: number;
   tableName: string;
+  onDataUpdate?: () => void;
 }
 
 const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
@@ -885,31 +960,31 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
   calculatedHeight,
   isProjectField,
   recordId,
-  tableName
+  tableName,
+  onDataUpdate
 }) => {
   const { data: session } = useSession();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editValue, setEditValue] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [options, setOptions] = useState<string[]>([]);
+  const [displayValue, setDisplayValue] = useState<string[]>(fieldValue || []);
+
+  // Sync displayValue with fieldValue prop changes
+  useEffect(() => {
+    const parsedValue = Array.isArray(fieldValue) ? fieldValue : (fieldValue ? fieldValue.split(',').map((item: string) => item.trim()) : []);
+    setDisplayValue(parsedValue);
+    setEditValue(parsedValue);
+  }, [fieldValue]);
 
   useEffect(() => {
-    // Parse current value
-    if (Array.isArray(fieldValue)) {
-      setEditValue(fieldValue);
-    } else if (typeof fieldValue === 'string' && fieldValue) {
-      setEditValue(fieldValue.split(',').map(v => v.trim()));
-    } else {
-      setEditValue([]);
-    }
-
     // Parse options from field Options string
     const optionsString = field.Options || '';
     if (optionsString) {
       const parsedOptions = optionsString.split(' | ').map((opt: string) => opt.trim()).filter((opt: string) => opt);
       setOptions(parsedOptions);
     }
-  }, [fieldValue, field.Options]);
+  }, [field.Options]);
 
   const handleOptionToggle = (option: string) => {
     setEditValue(prev => {
@@ -988,9 +1063,18 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
             const expectedArray = editValue;
             
             if (JSON.stringify(actualArray.sort()) === JSON.stringify(expectedArray.sort())) {
+              // Update local display value immediately for better UX
+              setDisplayValue(editValue);
               toast.success(`${field["Field Name"]} updated successfully!`);
+              
+              // Trigger data refresh to sync with backend
+              if (onDataUpdate) {
+                onDataUpdate();
+              }
             } else {
               toast.error(`Failed to update ${field["Field Name"]}: Values not accepted by database`);
+              // Reset to original value on error
+              setEditValue(displayValue);
             }
           } else {
             toast.error(`${field["Field Name"]} update status unclear. Please refresh to verify changes.`);
@@ -1014,14 +1098,8 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
   };
 
   const handleCancel = () => {
-    // Reset to original value
-    if (Array.isArray(fieldValue)) {
-      setEditValue(fieldValue);
-    } else if (typeof fieldValue === 'string' && fieldValue) {
-      setEditValue(fieldValue.split(',').map(v => v.trim()));
-    } else {
-      setEditValue([]);
-    }
+    // Reset to original display value
+    setEditValue(displayValue);
     setIsModalOpen(false);
   };
 
@@ -1048,7 +1126,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
           {field["Field Name"]}
         </div>
         <div className="text-xs text-muted-foreground">
-          {formatDisplayValue(fieldValue)}
+          {formatDisplayValue(displayValue)}
         </div>
       </div>
 
@@ -1186,9 +1264,6 @@ const SubcategoryHeader: React.FC<SubcategoryHeaderProps> = ({
     onClick={onToggle}
   >
     <div className="flex items-center gap-2">
-      <span className="text-xs bg-secondary/60 text-secondary-foreground px-1.5 py-0.5 rounded font-medium">
-        {subcategoryOrder}
-      </span>
       <h4 className="font-medium text-foreground text-xs">
         {subcategory}
       </h4>
@@ -1216,7 +1291,8 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
   onToggleCategory,
   onToggleSubcategory,
   collapsedActivityTimelines,
-  onToggleActivityTimeline
+  onToggleActivityTimeline,
+  onDataUpdate
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
@@ -1441,9 +1517,13 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
             return false;
           }
           const oldValue = oldData[field];
+          
+          // If there's no old value, this is a new field being set - include it
           if (oldValue === null || oldValue === undefined || String(oldValue).trim() === '') {
-            return false; // Don't show initial field settings
+            return true; // Show initial field settings (new values)
           }
+          
+          // If there's an old value, only show if it's different
           const newValueStr = String(value).trim();
           const oldValueStr = String(oldValue).trim();
           return oldValueStr !== newValueStr; // Only show actual changes
@@ -1638,7 +1718,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
         {!collapsedActivityTimelines.has(plot.id) && (
           <>
             {timelineLoading ? (
-              <div className="flex items-center justify-center py-4">
+              <div className="flex items-center justify-center py-4 h-[300px]">
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                 <span className="ml-2 text-xs text-muted-foreground">Loading activity...</span>
               </div>
@@ -1717,15 +1797,19 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                             const changedData = details.data || {};
                             const oldData = details.old_data || {};
                             
-                            // Filter entries to only show meaningful changes from one value to another different value
+                            // Filter entries to only show meaningful changes and new values
                             const validEntries = Object.entries(changedData).filter(([field, value]) => {
                               if (value === null || value === undefined || String(value).trim() === '') {
                                 return false;
                               }
                               const oldValue = oldData[field];
+                              
+                              // If there's no old value, this is a new field being set - include it
                               if (oldValue === null || oldValue === undefined || String(oldValue).trim() === '') {
-                                return false; // Don't show initial field settings
+                                return true; // Show initial field settings (new values)
                               }
+                              
+                              // If there's an old value, only show if it's different
                               const newValueStr = String(value).trim();
                               const oldValueStr = String(oldValue).trim();
                               return oldValueStr !== newValueStr; // Only show actual changes
@@ -1855,6 +1939,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                         isProjectField={isProjectField}
                                         recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
                                         tableName={isProjectField ? "Projects" : "LandPlots"}
+                                        onDataUpdate={onDataUpdate}
                                       />
                                     );
                                   }
@@ -1869,6 +1954,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                         isProjectField={isProjectField}
                                         recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
                                         tableName={isProjectField ? "Projects" : "LandPlots"}
+                                        onDataUpdate={onDataUpdate}
                                       />
                                     );
                                   }
@@ -1883,6 +1969,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                         isProjectField={isProjectField}
                                         recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
                                         tableName={isProjectField ? "Projects" : "LandPlots"}
+                                        onDataUpdate={onDataUpdate}
                                       />
                                     );
                                   }
@@ -1897,6 +1984,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                         isProjectField={isProjectField}
                                         recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
                                         tableName={isProjectField ? "Projects" : "LandPlots"}
+                                        onDataUpdate={onDataUpdate}
                                       />
                                     );
                                   }
@@ -1956,6 +2044,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                       isProjectField={isProjectField}
                                       recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
                                       tableName={isProjectField ? "Projects" : "LandPlots"}
+                                      onDataUpdate={onDataUpdate}
                                     />
                                   );
                                 })}
