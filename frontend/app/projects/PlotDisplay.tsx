@@ -1358,7 +1358,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       if (parentProject) {
         try {
           const response = await makeAuthenticatedRequest(
-            `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/projects/${parentProject._db_id}/comments`
+            `${process.env.BACKEND_BASE_URL}/nocodb/projects/${parentProject._db_id}/comments`
           );
           if (response.ok) {
             const data: CommentsResponse = await response.json();
@@ -1377,7 +1377,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       // Fetch plot comments
       try {
         const response = await makeAuthenticatedRequest(
-          `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/plots/${plot.id}/comments`
+          `${process.env.BACKEND_BASE_URL}/nocodb/plots/${plot.id}/comments`
         );
         if (response.ok) {
           const data: CommentsResponse = await response.json();
@@ -1418,7 +1418,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       if (parentProject) {
         try {
           const response = await makeAuthenticatedRequest(
-            `${process.env.NEXT_PUBLIC_BACKEND_URL}/audit/projects/${parentProject._db_id}`
+            `${process.env.BACKEND_BASE_URL}/audit/projects/${parentProject._db_id}`
           );
           if (response.ok) {
             const data: AuditResponse = await response.json();
@@ -1437,7 +1437,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       // Fetch plot audit
       try {
         const response = await makeAuthenticatedRequest(
-          `${process.env.NEXT_PUBLIC_BACKEND_URL}/audit/plots/${plot.id}`
+          `${process.env.BACKEND_BASE_URL}/audit/plots/${plot.id}`
         );
         if (response.ok) {
           const data: AuditResponse = await response.json();
@@ -1473,7 +1473,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
     setAddingComment(true);
     try {
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/${tableName}/${recordId}/comments`,
+        `${process.env.BACKEND_BASE_URL}/nocodb/${tableName}/${recordId}/comments`,
         {
           method: 'POST',
           body: JSON.stringify({ comment: newCommentText.trim() })

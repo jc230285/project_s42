@@ -96,7 +96,7 @@ function SchemaPageContent() {
       };
 
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb/update-row`,
+        `${process.env.BACKEND_BASE_URL}/nocodb/update-row`,
         {
           method: 'PUT',
           body: JSON.stringify(updateData)
@@ -265,7 +265,7 @@ function SchemaPageContent() {
     setIsLoadingTable(true);
 
     try {
-      const response = await makeAuthenticatedRequest(`${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/schema`, {
+      const response = await makeAuthenticatedRequest(`${process.env.BACKEND_BASE_URL}/projects/schema`, {
         method: 'GET',
       });
 
@@ -323,7 +323,7 @@ function SchemaPageContent() {
     setIsSyncing(true);
 
     try {
-      const response = await makeAuthenticatedRequest(`${process.env.NEXT_PUBLIC_BACKEND_URL}/nocodb-sync`, {
+      const response = await makeAuthenticatedRequest(`${process.env.BACKEND_BASE_URL}/nocodb-sync`, {
         method: 'POST',
       });
 

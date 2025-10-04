@@ -21,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.544.0",
+    "mysql2": "^3.15.1",
     "next": "13.4.19",
     "next-auth": "4.22.1",
     "postcss": "8.4.24",

@@ -3,7 +3,7 @@ import json
 
 token = 'eyJlbWFpbCI6Impra2VjMjNAZ21haWwuY29tIiwibmFtZSI6IkphbWVzIENvbGxpbnMiLCJpbWFnZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9hL0FDZzhvY0tvWHFDVWdnVDR6ZFFmdVIzR3BMaUVSQU56T0pRdlZJUTV3ZXREOXFyMXMtc2MyYXJ4dGc9czk2LWMifQ=='
 headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/json'}
-response = requests.get('http://localhost:8000/projects/schema', headers=headers)
+response = requests.get('http://localhost:8150/projects/schema', headers=headers)
 data = response.json()
 
 print('Status:', response.status_code)

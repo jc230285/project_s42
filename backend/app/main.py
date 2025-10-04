@@ -318,7 +318,10 @@ def _coerce_float(value):
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://s42.edbmotte.com", "http://localhost:3000", "http://localhost:3150"],
+    allow_origins=[
+        os.getenv('FRONTEND_BASE_URL', 'http://localhost:3150'),
+        os.getenv('BACKEND_BASE_URL', 'http://localhost:8150')
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -3601,5 +3604,150 @@ async def nocodb_audit_webhook(request: Request):
         print(f"❌ Webhook error: {str(e)}")
         return JSONResponse(
             content={"status": "error", "reason": str(e)},
+            status_code=500
+        )
+
+# Management Accounts API endpoints
+@app.get("/management-accounts", tags=["management-accounts"])
+async def get_management_accounts():
+    """Get all management accounts data including companies, accounts, directors, and documents"""
+    try:
+        connection = mysql.connector.connect(
+            host=os.getenv('DB_HOST'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database='management_accounts',
+            port=int(os.getenv('DB_PORT', '3306'))
+        )
+        cursor = connection.cursor(dictionary=True)
+
+        # Fetch companies
+        cursor.execute('SELECT * FROM companies ORDER BY full_name ASC, name ASC')
+        companies = cursor.fetchall()
+
+        # Fetch accounts with company information, sorted by balance descending
+        cursor.execute("""
+            SELECT a.*, c.full_name as company_name, c.name as company_short_name
+            FROM accounts a 
+            LEFT JOIN companies c ON a.company_id = c.id 
+            ORDER BY a.balance DESC
+        """)
+        accounts = cursor.fetchall()
+
+        # Fetch directors (if table exists)
+        directors = []
+        try:
+            cursor.execute('SELECT * FROM directors ORDER BY name ASC')
+            directors = cursor.fetchall()
+        except mysql.connector.Error:
+            print('Directors table not found, creating empty array')
+
+        # Fetch documents (if table exists)
+        documents = []
+        try:
+            cursor.execute('SELECT * FROM documents ORDER BY uploaded_at DESC')
+            documents = cursor.fetchall()
+        except mysql.connector.Error:
+            print('Documents table not found, creating empty array')
+
+        cursor.close()
+        connection.close()
+
+        return {
+            "companies": companies,
+            "accounts": accounts,
+            "directors": directors,
+            "documents": documents
+        }
+
+    except Exception as e:
+        print(f"❌ Management accounts error: {str(e)}")
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+@app.post("/management-accounts/companies", tags=["management-accounts"])
+async def create_company(request: Request):
+    """Create a new company"""
+    try:
+        body = await request.json()
+        
+        connection = mysql.connector.connect(
+            host=os.getenv('DB_HOST'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database='management_accounts',
+            port=int(os.getenv('DB_PORT', '3306'))
+        )
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO companies (name, full_name, registration_number, address, country, website, email, phone)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            body.get('name', ''),
+            body.get('full_name', ''),
+            body.get('registration_number', ''),
+            body.get('address', ''),
+            body.get('country', ''),
+            body.get('website', ''),
+            body.get('email', ''),
+            body.get('phone', '')
+        ))
+
+        connection.commit()
+        new_id = cursor.lastrowid
+        cursor.close()
+        connection.close()
+
+        return {"id": new_id, "message": "Company created successfully"}
+
+    except Exception as e:
+        print(f"❌ Create company error: {str(e)}")
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
+
+@app.post("/management-accounts/accounts", tags=["management-accounts"])
+async def create_account(request: Request):
+    """Create a new account"""
+    try:
+        body = await request.json()
+        
+        connection = mysql.connector.connect(
+            host=os.getenv('DB_HOST'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database='management_accounts',
+            port=int(os.getenv('DB_PORT', '3306'))
+        )
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO accounts (company_id, account_name, account_number, bank_name, currency, balance, account_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            body.get('company_id'),
+            body.get('account_name', ''),
+            body.get('account_number', ''),
+            body.get('bank_name', ''),
+            body.get('currency', 'GBP'),
+            body.get('balance', 0),
+            body.get('account_type', 'current')
+        ))
+
+        connection.commit()
+        new_id = cursor.lastrowid
+        cursor.close()
+        connection.close()
+
+        return {"id": new_id, "message": "Account created successfully"}
+
+    except Exception as e:
+        print(f"❌ Create account error: {str(e)}")
+        return JSONResponse(
+            content={"error": str(e)},
             status_code=500
         )

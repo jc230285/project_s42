@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward request to backend using internal Docker network URL
-    const backendUrl = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = process.env.BACKEND_BASE_URL || 'http://localhost:8150';
     console.log('🎯 FRONTEND PROXY: Forwarding to backend at:', backendUrl);
     
     const response = await fetch(`${backendUrl}/nocodb/query`, {

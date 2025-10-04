@@ -97,7 +97,7 @@ if errorlevel 1 (
 echo.
 echo ============================================
 echo Servers started successfully!
-echo Backend: http://localhost:8000 (Backend Server window)
-echo Frontend: http://localhost:3000 (Frontend Server window)
+echo Backend: http://localhost:8150 (Backend Server window)
+echo Frontend: http://localhost:3150 (Frontend Server window)
 echo ============================================
 echo Each server is running in its own command window.

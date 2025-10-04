@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const encodedUser = Buffer.from(JSON.stringify(userInfo)).toString('base64');
     
   // Prefer in-docker URL, then public URL, then default
-  const backendUrl = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+  const backendUrl = process.env.BACKEND_BASE_URL || 'http://localhost:8150';
     const response = await fetch(`${backendUrl}/projects/map-data`, {
       method: 'GET',
       headers: {

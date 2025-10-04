@@ -30,10 +30,10 @@ export const authOptions: NextAuthOptions = {
         
         // Always fetch fresh user groups from backend
         try {
-          // Use internal backend URL for server-side requests
+          // Use appropriate backend URL based on environment
           const backendUrl = process.env.NODE_ENV === 'production' 
             ? 'https://s42api.edbmotte.com' 
-            : 'http://backend:8000';
+            : process.env.BACKEND_BASE_URL || 'http://localhost:8150';
             
           console.log('JWT: Fetching user data from:', `${backendUrl}/user-info/${encodeURIComponent(email)}`);
           
@@ -86,7 +86,7 @@ export const authOptions: NextAuthOptions = {
             try {
               const backendUrl = process.env.NODE_ENV === 'production' 
                 ? 'https://s42api.edbmotte.com' 
-                : 'http://backend:8000';
+                : process.env.BACKEND_BASE_URL || 'http://localhost:8150';
                 
               console.log('Session: Fetching user data from:', `${backendUrl}/user-info/${encodeURIComponent(session.user.email)}`);
               
@@ -123,7 +123,7 @@ export const authOptions: NextAuthOptions = {
         try {
           const backendUrl = process.env.NODE_ENV === 'production' 
             ? 'https://s42api.edbmotte.com' 
-            : 'http://backend:8000';
+            : process.env.BACKEND_BASE_URL || 'http://localhost:8150';
           
           // Check if user exists
           const userInfoResponse = await fetch(`${backendUrl}/user-info/${encodeURIComponent(user.email)}`, {

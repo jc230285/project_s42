@@ -311,7 +311,7 @@ function ProjectsPageContent() {
   const fetchProjectPartners = async () => {
     try {
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/project-partners`
+        `${process.env.BACKEND_BASE_URL}/projects/project-partners`
       );
       if (response.ok) {
         const data: ProjectPartnersResponse = await response.json();
@@ -329,7 +329,7 @@ function ProjectsPageContent() {
       setError(null);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/projects`
+        `${process.env.BACKEND_BASE_URL}/projects/projects`
       );
       
       if (response.ok) {
@@ -354,7 +354,7 @@ function ProjectsPageContent() {
     try {
       setSchemaLoading(true);
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/schema`
+        `${process.env.BACKEND_BASE_URL}/projects/schema`
       );
       
       if (response.ok) {
@@ -388,7 +388,7 @@ function ProjectsPageContent() {
       console.log('Converted plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}`
+        `${process.env.BACKEND_BASE_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}`
       );
       
       if (response.ok) {

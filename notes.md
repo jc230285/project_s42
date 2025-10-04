@@ -3,8 +3,8 @@ Try and run with as little tokens as posablesible
 
 ## Local Development
 
-- **Frontend:** Always run on port `3150`.
-- **Backend:** Always run on port `8150`.
+- **Frontend:** Always run on port `3150`. Fronent is N
+- **Backend:** Always run on port `8150`. Backends running Fast API
 - Both services run in Docker.
 - Before starting, clear all containers and Windows services using these ports.
 - Rebuild as needed, then push changes to GitHub.
