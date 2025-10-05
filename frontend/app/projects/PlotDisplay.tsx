@@ -12,6 +12,8 @@ interface SchemaField {
   "Table": string;
   "category_order": number;
   "subcategory_order": number;
+  "Description"?: string;
+  "Options"?: string;
 }
 
 // Comments interfaces
@@ -96,6 +98,359 @@ interface PlotDisplayProps {
   onDataUpdate?: () => void;
 }
 
+// GeoDataField Component - for displaying lat/long coordinates with Google Maps link
+interface GeoDataFieldProps {
+  field: SchemaField;
+  fieldValue: any;
+  calculatedHeight: number;
+  isProjectField: boolean;
+  recordId: number;
+  tableName: string;
+  onDataUpdate?: () => void;
+}
+
+const GeoDataField: React.FC<GeoDataFieldProps> = ({
+  field,
+  fieldValue,
+  calculatedHeight,
+  isProjectField,
+  recordId,
+  tableName,
+  onDataUpdate
+}) => {
+  const { data: session } = useSession();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(fieldValue || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [displayValue, setDisplayValue] = useState(fieldValue);
+  const [showFieldHistory, setShowFieldHistory] = useState(false);
+  const [fieldAuditRecords, setFieldAuditRecords] = useState<any[]>([]);
+  const [fieldHistoryLoading, setFieldHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    setDisplayValue(fieldValue);
+    setEditValue(fieldValue || '');
+  }, [fieldValue]);
+
+  // Normalize coordinates: replace , or : with ;
+  const normalizeCoordinates = (value: string): string => {
+    if (!value) return value;
+    return value.replace(/[,:]/g, ';');
+  };
+
+  // Parse and validate coordinates
+  const parseCoordinates = (value: string): { lat: number; lng: number } | null => {
+    if (!value) return null;
+    const normalized = normalizeCoordinates(value);
+    const parts = normalized.split(';');
+    if (parts.length !== 2) return null;
+    const lat = parseFloat(parts[0].trim());
+    const lng = parseFloat(parts[1].trim());
+    if (isNaN(lat) || isNaN(lng)) return null;
+    return { lat, lng };
+  };
+
+  const handleSave = async () => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+
+    // Normalize the coordinates before saving
+    const normalizedValue = normalizeCoordinates(editValue);
+
+    // Check if value actually changed
+    if (normalizedValue === displayValue) {
+      setIsEditing(false);
+      return;
+    }
+
+    // Validate coordinates format
+    const coords = parseCoordinates(normalizedValue);
+    if (normalizedValue && !coords) {
+      toast.error('Invalid coordinates format. Use: latitude;longitude (e.g., 68.607358;14.461009)');
+      return;
+    }
+
+    setIsSaving(true);
+    const loadingToast = toast.loading(`Updating ${field["Field Name"]}...`);
+
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+
+      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/records`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          Id: recordId,
+          [field["Field Name"]]: normalizedValue
+        }),
+      });
+
+      toast.dismiss(loadingToast);
+
+      if (response.ok) {
+        setDisplayValue(normalizedValue);
+        setIsEditing(false);
+        toast.success(`${field["Field Name"]} updated successfully`);
+        if (onDataUpdate) {
+          onDataUpdate();
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        toast.error(errorData.detail || `Failed to update ${field["Field Name"]} (${response.status})`);
+        console.error('Update failed:', response.status, errorData);
+      }
+    } catch (error) {
+      console.error('Error updating field:', error);
+      toast.dismiss(loadingToast);
+      toast.error(`Failed to update ${field["Field Name"]}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setEditValue(displayValue || '');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditValue(displayValue || '');
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      handleCancel();
+    }
+  };
+
+  const loadFieldHistory = async () => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+    setFieldHistoryLoading(true);
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+        headers: { 'Authorization': authHeader },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const fieldRecords = data.audit_trail?.filter((record: any) => 
+          record.fk_column_id === field["Field ID"]
+        ) || [];
+        setFieldAuditRecords(fieldRecords);
+      } else {
+        console.error('Failed to load field history');
+      }
+    } catch (error) {
+      console.error('Error loading field history:', error);
+    } finally {
+      setFieldHistoryLoading(false);
+    }
+  };
+
+  const handleShowHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFieldHistory(true);
+    if (fieldAuditRecords.length === 0) {
+      loadFieldHistory();
+    }
+  };
+
+  const coords = parseCoordinates(displayValue);
+  const googleMapsUrl = coords 
+    ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}`
+    : null;
+
+  return (
+    <>
+      <div 
+        className="relative p-3 border border-border/20 rounded-lg bg-card transition-colors"
+        style={{ minHeight: `${calculatedHeight}px` }}
+        data-field-id={field["Field ID"]}
+        data-field-type={field.Type}
+      >
+        <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2 justify-between">
+          <div className="flex items-center gap-2">
+            <span className="group relative cursor-help">
+              {field["Field Name"]}
+              <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                <div>
+                  <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+                </div>
+                {field.Description && (
+                  <div className="mt-2">
+                    <span className="font-semibold text-primary">Description:</span>
+                    <div className="italic text-muted-foreground">{field.Description}</div>
+                  </div>
+                )}
+              </div>
+            </span>
+            {field["Table"] === "Projects" ? (
+              <div className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative" title="Project field">
+                <svg className="w-3 h-3 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                </svg>
+                <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                  <div><span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span></div>
+                  <div><span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span></div>
+                  {field.Description && (
+                    <div className="mt-2">
+                      <span className="font-semibold text-red-700">Description:</span>
+                      <div className="italic text-muted-foreground">{field.Description}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative" title="Plot field">
+                <svg className="w-3 h-3 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20" />
+                  <circle cx="12" cy="10" r="2" fill="currentColor" />
+                </svg>
+                <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                  <div><span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span></div>
+                  <div><span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span></div>
+                  {field.Description && (
+                    <div className="mt-2">
+                      <span className="font-semibold text-blue-700">Description:</span>
+                      <div className="italic text-muted-foreground">{field.Description}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleShowHistory}
+            className="p-1 rounded bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
+            title="View field history"
+          >
+            <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </button>
+        </div>
+
+        {/* Field value - left aligned, full width, with Google Maps icon */}
+        <div className="w-full">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={handleSave}
+                placeholder="e.g., 68.607358;14.461009"
+                className="flex-1 px-2 py-1 text-sm bg-background border border-primary rounded focus:outline-none focus:ring-2 focus:ring-primary"
+                autoFocus
+                disabled={isSaving}
+              />
+              {googleMapsUrl && (
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-blue-500 hover:bg-blue-600 transition-colors flex-shrink-0"
+                  title="Open in Google Maps"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                  </svg>
+                </a>
+              )}
+            </div>
+          ) : (
+            <div 
+              onClick={() => setIsEditing(true)}
+              className="w-full flex items-center gap-2 cursor-pointer hover:bg-accent/20 rounded px-2 py-1 transition-colors"
+            >
+              <span className="flex-1 text-sm text-foreground">
+                {displayValue || <span className="text-muted-foreground italic">Click to add coordinates...</span>}
+              </span>
+              {googleMapsUrl && (
+                <a
+                  href={googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-blue-500 hover:bg-blue-600 transition-colors flex-shrink-0"
+                  title="Open in Google Maps"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                  </svg>
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showFieldHistory && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={() => setShowFieldHistory(false)}>
+          <div className="w-96 bg-background border-l border-border h-full overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
+              <h3 className="font-semibold">Field History: {field["Field Name"]}</h3>
+              <button onClick={() => setShowFieldHistory(false)} className="text-muted-foreground hover:text-foreground">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              {fieldHistoryLoading ? (
+                <div className="text-center text-muted-foreground">Loading history...</div>
+              ) : fieldAuditRecords.length === 0 ? (
+                <div className="text-center text-muted-foreground">No history available</div>
+              ) : (
+                <div className="space-y-3">
+                  {fieldAuditRecords.map((record, idx) => (
+                    <div key={idx} className="border border-border rounded p-3 text-sm">
+                      <div className="font-medium text-primary">{record.user_name || record.user}</div>
+                      <div className="text-xs text-muted-foreground">{new Date(record.created_at).toLocaleString()}</div>
+                      <div className="mt-2 space-y-1">
+                        {record.previous_value !== undefined && (
+                          <div><span className="font-semibold">From:</span> {record.previous_value || '(empty)'}</div>
+                        )}
+                        {record.value !== undefined && (
+                          <div><span className="font-semibold">To:</span> {record.value || '(empty)'}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 // SingleLineTextField Component
 interface SingleLineTextFieldProps {
   field: SchemaField;
@@ -121,6 +476,9 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
   const [displayValue, setDisplayValue] = useState(fieldValue);
+  const [showFieldHistory, setShowFieldHistory] = useState(false);
+  const [fieldAuditRecords, setFieldAuditRecords] = useState<any[]>([]);
+  const [fieldHistoryLoading, setFieldHistoryLoading] = useState(false);
 
   // Sync displayValue with fieldValue prop changes
   useEffect(() => {
@@ -130,6 +488,12 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
 
   const handleSave = async () => {
     if (isSaving) return;
+    
+    // Check if value actually changed
+    if (editValue === displayValue) {
+      setIsEditing(false);
+      return;
+    }
     
     setIsSaving(true);
     try {
@@ -205,6 +569,52 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
     }
   };
 
+  const loadFieldHistory = async () => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+
+    setFieldHistoryLoading(true);
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+
+      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+        headers: {
+          'Authorization': authHeader,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Filter audit records for this specific field
+        const fieldRecords = data.audit_trail?.filter((record: any) => 
+          record.fk_column_id === field["Field ID"]
+        ) || [];
+        setFieldAuditRecords(fieldRecords);
+      } else {
+        console.error('Failed to load field history');
+      }
+    } catch (error) {
+      console.error('Error loading field history:', error);
+      toast.error('Failed to load field history');
+    } finally {
+      setFieldHistoryLoading(false);
+    }
+  };
+
+  const handleShowHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFieldHistory(true);
+    loadFieldHistory();
+  };
+
   return (
     <div 
       className="relative p-3 border border-border/20 rounded-lg bg-card"
@@ -213,12 +623,108 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
       data-field-type={field.Type}
     >
       {/* Field name - top right */}
-      <div className="absolute top-2 left-2 text-xs text-muted-foreground font-medium">
-        {field["Field Name"]}
+      <div className="absolute top-2 left-2 right-2 text-xs text-muted-foreground font-medium flex items-center justify-between gap-1">
+        <div className="flex items-center gap-1">
+          <span className="group relative cursor-help">
+            {field["Field Name"]}
+            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                  <span className="font-semibold text-primary">Description:</span>
+                  <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+            </div>
+          </span>
+            {field["Table"] === "Projects" ? (
+            <div
+              className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
+              title="Project field"
+            >
+              <svg
+              className="w-3 h-3 text-red-600 dark:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+              ></path>
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-red-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            ) : (
+            <div
+              className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
+              title="Plot field"
+            >
+              {/* Map icon */}
+              <svg
+              className="w-3 h-3 text-blue-600 dark:text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
+              />
+              <circle cx="12" cy="10" r="2" fill="currentColor" />
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-blue-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            )}
+        </div>
+        <button
+          onClick={handleShowHistory}
+          className="p-1 rounded bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
+          title="View field history"
+        >
+          <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+        </button>
       </div>
       
-      {/* Field value - bottom right, clickable and editable */}
-      <div className="absolute bottom-2 right-2 min-w-[100px] text-right">
+      {/* Field value - bottom left, clickable and editable */}
+      <div className="absolute bottom-2 left-2 right-2">
         {isEditing ? (
           <div className="flex items-center gap-1">
             <input
@@ -227,7 +733,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={handleKeyDown}
               onBlur={handleSave}
-              className="text-sm border border-gray-600 rounded px-2 py-1 min-w-[80px] text-right bg-gray-800 text-white focus:border-gray-500 focus:outline-none"
+              className="text-sm border border-gray-600 rounded px-2 py-1 w-full bg-gray-800 text-white focus:border-gray-500 focus:outline-none"
               autoFocus
               disabled={isSaving}
             />
@@ -236,9 +742,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
         ) : (
           <div 
             onClick={() => setIsEditing(true)}
-            className={`text-sm cursor-pointer hover:bg-accent/50 rounded px-2 py-1 transition-colors whitespace-pre-wrap break-words ${
-              isProjectField ? 'text-green-700' : 'text-blue-700'
-            }`}
+            className="text-sm cursor-pointer hover:bg-accent/50 rounded px-2 py-1 transition-colors whitespace-pre-wrap break-words text-foreground"
           >
             {displayValue !== null && displayValue !== undefined && String(displayValue).trim() !== '' ? (
               <span className="font-medium whitespace-pre-wrap break-words">
@@ -250,6 +754,72 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
           </div>
         )}
       </div>
+
+      {/* Field History Slide-in Panel */}
+      {showFieldHistory && (
+        <div className="fixed inset-0 z-50" onClick={() => setShowFieldHistory(false)}>
+          <div 
+            className="absolute top-0 right-0 h-full w-96 bg-background border-l border-border shadow-2xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between z-10">
+              <div>
+                <h3 className="font-semibold text-lg">{field["Field Name"]}</h3>
+                <p className="text-xs text-muted-foreground">Change History</p>
+              </div>
+              <button
+                onClick={() => setShowFieldHistory(false)}
+                className="p-2 hover:bg-accent rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4">
+              {fieldHistoryLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="text-muted-foreground">Loading history...</div>
+                </div>
+              ) : fieldAuditRecords.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No changes recorded for this field
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {fieldAuditRecords.map((record, idx) => (
+                    <div key={idx} className="border-l-2 border-primary/30 pl-4 pb-4">
+                      <div className="flex items-start gap-2 mb-2">
+                        <div className="mt-1 w-2 h-2 rounded-full bg-primary -ml-[25px]"></div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                            <span className="font-medium text-foreground">
+                              {record.user_name || record.user_email || 'Unknown'}
+                            </span>
+                            <span>•</span>
+                            <span>{new Date(record.created_at).toLocaleString()}</span>
+                          </div>
+                          {record.description && (
+                            <div className="text-sm">
+                              <div className="bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded text-red-700 dark:text-red-300 line-through mb-1">
+                                {record.description.match(/changed from "(.*?)"/)?.[1] || 'Empty'}
+                              </div>
+                              <div className="bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded text-green-700 dark:text-green-300">
+                                {record.description.match(/to "(.*?)"/)?.[1] || 'Empty'}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -279,6 +849,9 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
   const [displayValue, setDisplayValue] = useState(fieldValue);
+  const [showFieldHistory, setShowFieldHistory] = useState(false);
+  const [fieldAuditRecords, setFieldAuditRecords] = useState<any[]>([]);
+  const [fieldHistoryLoading, setFieldHistoryLoading] = useState(false);
 
   // Sync displayValue with fieldValue prop changes
   useEffect(() => {
@@ -288,6 +861,13 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
 
   const handleSave = async () => {
     if (isSaving) return;
+    
+    // Check if value actually changed
+    if (editValue === displayValue) {
+      setIsModalOpen(false);
+      toast.success('No changes to save');
+      return;
+    }
     
     setIsSaving(true);
     
@@ -362,6 +942,51 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
     setIsModalOpen(false);
   };
 
+  const loadFieldHistory = async () => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+
+    setFieldHistoryLoading(true);
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+
+      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+        headers: {
+          'Authorization': authHeader,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const fieldRecords = data.audit_trail?.filter((record: any) => 
+          record.fk_column_id === field["Field ID"]
+        ) || [];
+        setFieldAuditRecords(fieldRecords);
+      } else {
+        console.error('Failed to load field history');
+      }
+    } catch (error) {
+      console.error('Error loading field history:', error);
+      toast.error('Failed to load field history');
+    } finally {
+      setFieldHistoryLoading(false);
+    }
+  };
+
+  const handleShowHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFieldHistory(true);
+    loadFieldHistory();
+  };
+
   // Strip HTML tags for preview display
   const stripHtml = (html: string) => {
     if (!html) return '';
@@ -381,12 +1006,107 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
         onClick={() => setIsModalOpen(true)}
       >
         {/* Field name - top */}
-        <div className="text-sm font-medium text-foreground mb-2 break-words">
-          {field["Field Name"]}
+        <div className="absolute top-2 left-2 right-2 text-sm font-medium text-foreground mb-2 break-words flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="group relative cursor-help">
+              {field["Field Name"]}
+              <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                <div>
+                  <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+                </div>
+                {field.Description && (
+                  <div className="mt-2">
+                    <span className="font-semibold text-primary">Description:</span>
+                    <div className="italic text-muted-foreground">{field.Description}</div>
+                  </div>
+                )}
+              </div>
+            </span>
+            {field["Table"] === "Projects" ? (
+            <div
+              className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
+              title="Project field"
+            >
+              <svg
+              className="w-3 h-3 text-red-600 dark:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+              ></path>
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-red-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            ) : (
+            <div
+              className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
+              title="Plot field"
+            >
+              <svg
+              className="w-3 h-3 text-blue-600 dark:text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
+              />
+              <circle cx="12" cy="10" r="2" fill="currentColor" />
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-blue-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            )}
+          </div>
+          <button
+            onClick={handleShowHistory}
+            className="p-1 rounded bg-white hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors"
+            title="View field history"
+          >
+            <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </button>
         </div>
         
         {/* Rich text preview - below field name */}
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs text-muted-foreground mt-8">
           {displayValue ? (
             <div className="prose prose-sm max-w-none prose-invert">
               <div
@@ -457,6 +1177,71 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
           </div>
         </div>
       )}
+
+      {/* Field History Slide-in Panel */}
+      {showFieldHistory && (
+        <div className="fixed inset-0 z-50" onClick={() => setShowFieldHistory(false)}>
+          <div 
+            className="absolute top-0 right-0 h-full w-96 bg-background border-l border-border shadow-2xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between z-10">
+              <div>
+                <h3 className="font-semibold text-lg">{field["Field Name"]}</h3>
+                <p className="text-xs text-muted-foreground">Change History</p>
+              </div>
+              <button
+                onClick={() => setShowFieldHistory(false)}
+                className="p-2 hover:bg-accent rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              {fieldHistoryLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="text-muted-foreground">Loading history...</div>
+                </div>
+              ) : fieldAuditRecords.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No changes recorded for this field
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {fieldAuditRecords.map((record, idx) => (
+                    <div key={idx} className="border-l-2 border-primary/30 pl-4 pb-4">
+                      <div className="flex items-start gap-2 mb-2">
+                        <div className="mt-1 w-2 h-2 rounded-full bg-primary -ml-[25px]"></div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                            <span className="font-medium text-foreground">
+                              {record.user_name || record.user_email || 'Unknown'}
+                            </span>
+                            <span>•</span>
+                            <span>{new Date(record.created_at).toLocaleString()}</span>
+                          </div>
+                          {record.description && (
+                            <div className="text-sm">
+                              <div className="bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded text-red-700 dark:text-red-300 line-through mb-1">
+                                {record.description.match(/changed from "(.*?)"/)?.[1] || 'Empty'}
+                              </div>
+                              <div className="bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded text-green-700 dark:text-green-300">
+                                {record.description.match(/to "(.*?)"/)?.[1] || 'Empty'}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
@@ -486,6 +1271,9 @@ const GenericField: React.FC<GenericFieldProps> = ({
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
   const [displayValue, setDisplayValue] = useState(fieldValue);
+  const [showFieldHistory, setShowFieldHistory] = useState(false);
+  const [fieldAuditRecords, setFieldAuditRecords] = useState<any[]>([]);
+  const [fieldHistoryLoading, setFieldHistoryLoading] = useState(false);
 
   // Sync displayValue with fieldValue prop changes
   useEffect(() => {
@@ -495,6 +1283,13 @@ const GenericField: React.FC<GenericFieldProps> = ({
 
   const handleSave = async () => {
     if (isSaving) return;
+    
+    // Check if value actually changed
+    if (editValue === displayValue) {
+      setIsModalOpen(false);
+      toast.success('No changes to save');
+      return;
+    }
     
     setIsSaving(true);
     
@@ -569,6 +1364,44 @@ const GenericField: React.FC<GenericFieldProps> = ({
     setIsModalOpen(false);
   };
 
+  const loadFieldHistory = async () => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+    setFieldHistoryLoading(true);
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+        headers: { 'Authorization': authHeader },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const fieldRecords = data.audit_trail?.filter((record: any) => 
+          record.fk_column_id === field["Field ID"]
+        ) || [];
+        setFieldAuditRecords(fieldRecords);
+      }
+    } catch (error) {
+      console.error('Error loading field history:', error);
+      toast.error('Failed to load field history');
+    } finally {
+      setFieldHistoryLoading(false);
+    }
+  };
+
+  const handleShowHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFieldHistory(true);
+    loadFieldHistory();
+  };
+
   // Determine input type based on field type
   const getInputType = (fieldType: string) => {
     switch (fieldType.toLowerCase()) {
@@ -627,8 +1460,92 @@ const GenericField: React.FC<GenericFieldProps> = ({
         onClick={() => setIsModalOpen(true)}
       >
         {/* Field name - top */}
-        <div className="text-sm font-medium text-foreground mb-2 break-words">
-          {field["Field Name"]}
+        <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
+          <span className="group relative cursor-help">
+            {field["Field Name"]}
+            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                  <span className="font-semibold text-primary">Description:</span>
+                  <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+            </div>
+          </span>
+          {field["Table"] === "Projects" ? (
+            <div
+              className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
+              title="Project field"
+            >
+              <svg
+              className="w-3 h-3 text-red-600 dark:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+              ></path>
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-red-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            ) : (
+            <div
+              className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
+              title="Plot field"
+            >
+              <svg
+              className="w-3 h-3 text-blue-600 dark:text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
+              />
+              <circle cx="12" cy="10" r="2" fill="currentColor" />
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-blue-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            )}
         </div>
         
         {/* Field value - below field name */}
@@ -732,6 +1649,9 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
   const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
   const [displayValue, setDisplayValue] = useState(fieldValue);
+  const [showFieldHistory, setShowFieldHistory] = useState(false);
+  const [fieldAuditRecords, setFieldAuditRecords] = useState<any[]>([]);
+  const [fieldHistoryLoading, setFieldHistoryLoading] = useState(false);
 
   // Sync displayValue with fieldValue prop changes
   useEffect(() => {
@@ -752,6 +1672,13 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
 
   const handleSave = async () => {
     if (isSaving) return;
+    
+    // Check if value actually changed
+    if (editValue === displayValue) {
+      setIsModalOpen(false);
+      toast.success('No changes to save');
+      return;
+    }
     
     // Validate that the selected value is in the allowed options
     if (editValue && !options.includes(editValue)) {
@@ -851,6 +1778,44 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
     setIsModalOpen(false);
   };
 
+  const loadFieldHistory = async () => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+    setFieldHistoryLoading(true);
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+        headers: { 'Authorization': authHeader },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const fieldRecords = data.audit_trail?.filter((record: any) => 
+          record.fk_column_id === field["Field ID"]
+        ) || [];
+        setFieldAuditRecords(fieldRecords);
+      }
+    } catch (error) {
+      console.error('Error loading field history:', error);
+      toast.error('Failed to load field history');
+    } finally {
+      setFieldHistoryLoading(false);
+    }
+  };
+
+  const handleShowHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFieldHistory(true);
+    loadFieldHistory();
+  };
+
   return (
     <>
       <div 
@@ -860,8 +1825,92 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
         data-field-type={field.Type}
         onClick={() => setIsModalOpen(true)}
       >
-        <div className="text-sm font-medium text-foreground mb-2 break-words">
-          {field["Field Name"]}
+        <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
+          <span className="group relative cursor-help">
+            {field["Field Name"]}
+            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                  <span className="font-semibold text-primary">Description:</span>
+                  <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+            </div>
+          </span>
+          {field["Table"] === "Projects" ? (
+            <div
+              className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
+              title="Project field"
+            >
+              <svg
+              className="w-3 h-3 text-red-600 dark:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+              ></path>
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-red-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            ) : (
+            <div
+              className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
+              title="Plot field"
+            >
+              <svg
+              className="w-3 h-3 text-blue-600 dark:text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
+              />
+              <circle cx="12" cy="10" r="2" fill="currentColor" />
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-blue-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            )}
         </div>
         <div className="text-xs text-muted-foreground">
           {displayValue || 'Click to select option...'}
@@ -969,6 +2018,9 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [options, setOptions] = useState<string[]>([]);
   const [displayValue, setDisplayValue] = useState<string[]>(fieldValue || []);
+  const [showFieldHistory, setShowFieldHistory] = useState(false);
+  const [fieldAuditRecords, setFieldAuditRecords] = useState<any[]>([]);
+  const [fieldHistoryLoading, setFieldHistoryLoading] = useState(false);
 
   // Sync displayValue with fieldValue prop changes
   useEffect(() => {
@@ -998,6 +2050,15 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
 
   const handleSave = async () => {
     if (isSaving) return;
+    
+    // Check if value actually changed (compare arrays)
+    const editValueStr = editValue.sort().join(',');
+    const displayValueStr = displayValue.sort().join(',');
+    if (editValueStr === displayValueStr) {
+      setIsModalOpen(false);
+      toast.success('No changes to save');
+      return;
+    }
     
     // Validate that all selected values are in the allowed options
     const invalidOptions = editValue.filter(val => !options.includes(val));
@@ -1103,6 +2164,44 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
     setIsModalOpen(false);
   };
 
+  const loadFieldHistory = async () => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+    setFieldHistoryLoading(true);
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
+      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+        headers: { 'Authorization': authHeader },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const fieldRecords = data.audit_trail?.filter((record: any) => 
+          record.fk_column_id === field["Field ID"]
+        ) || [];
+        setFieldAuditRecords(fieldRecords);
+      }
+    } catch (error) {
+      console.error('Error loading field history:', error);
+      toast.error('Failed to load field history');
+    } finally {
+      setFieldHistoryLoading(false);
+    }
+  };
+
+  const handleShowHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowFieldHistory(true);
+    loadFieldHistory();
+  };
+
   const formatDisplayValue = (value: any) => {
     if (Array.isArray(value)) {
       return value.length > 0 ? value.join(', ') : 'Click to select options...';
@@ -1122,8 +2221,92 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
         data-field-type={field.Type}
         onClick={() => setIsModalOpen(true)}
       >
-        <div className="text-sm font-medium text-foreground mb-2 break-words">
-          {field["Field Name"]}
+        <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
+          <span className="group relative cursor-help">
+            {field["Field Name"]}
+            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                  <span className="font-semibold text-primary">Description:</span>
+                  <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+            </div>
+          </span>
+          {field["Table"] === "Projects" ? (
+            <div
+              className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
+              title="Project field"
+            >
+              <svg
+              className="w-3 h-3 text-red-600 dark:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+              ></path>
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-red-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            ) : (
+            <div
+              className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
+              title="Plot field"
+            >
+              <svg
+              className="w-3 h-3 text-blue-600 dark:text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
+              />
+              <circle cx="12" cy="10" r="2" fill="currentColor" />
+              </svg>
+              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div>
+                <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
+              </div>
+              {field.Description && (
+                <div className="mt-2">
+                <span className="font-semibold text-blue-700">Description:</span>
+                <div className="italic text-muted-foreground">{field.Description}</div>
+                </div>
+              )}
+              </div>
+            </div>
+            )}
         </div>
         <div className="text-xs text-muted-foreground">
           {formatDisplayValue(displayValue)}
@@ -1223,9 +2406,6 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({ category, isCollapsed, 
     onClick={onToggle}
   >
     <div className="flex items-center gap-2">
-      <span className="text-xs bg-primary/20 text-primary-foreground px-2 py-1 rounded-full font-medium">
-        {categoryOrder}
-      </span>
       <h3 className="font-semibold text-foreground text-sm">
         {category}
       </h3>
@@ -1260,7 +2440,7 @@ const SubcategoryHeader: React.FC<SubcategoryHeaderProps> = ({
   subcategoryOrder 
 }) => (
   <div 
-    className="flex items-center justify-between p-2 bg-secondary/50 border border-secondary/30 rounded-md cursor-pointer hover:bg-secondary/70 transition-colors mb-1 ml-4"
+    className="flex items-center justify-between p-1 bg-secondary/50 border border-secondary/30 rounded-md cursor-pointer hover:bg-secondary/70 transition-colors mb-1"
     onClick={onToggle}
   >
     <div className="flex items-center gap-2">
@@ -1358,7 +2538,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       if (parentProject) {
         try {
           const response = await makeAuthenticatedRequest(
-            `${process.env.BACKEND_BASE_URL}/nocodb/projects/${parentProject._db_id}/comments`
+            `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/nocodb/projects/${parentProject._db_id}/comments`
           );
           if (response.ok) {
             const data: CommentsResponse = await response.json();
@@ -1377,7 +2557,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       // Fetch plot comments
       try {
         const response = await makeAuthenticatedRequest(
-          `${process.env.BACKEND_BASE_URL}/nocodb/plots/${plot.id}/comments`
+          `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/nocodb/plots/${plot.id}/comments`
         );
         if (response.ok) {
           const data: CommentsResponse = await response.json();
@@ -1418,7 +2598,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       if (parentProject) {
         try {
           const response = await makeAuthenticatedRequest(
-            `${process.env.BACKEND_BASE_URL}/audit/projects/${parentProject._db_id}`
+            `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/projects/${parentProject._db_id}`
           );
           if (response.ok) {
             const data: AuditResponse = await response.json();
@@ -1437,7 +2617,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
       // Fetch plot audit
       try {
         const response = await makeAuthenticatedRequest(
-          `${process.env.BACKEND_BASE_URL}/audit/plots/${plot.id}`
+          `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/plots/${plot.id}`
         );
         if (response.ok) {
           const data: AuditResponse = await response.json();
@@ -1473,7 +2653,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
     setAddingComment(true);
     try {
       const response = await makeAuthenticatedRequest(
-        `${process.env.BACKEND_BASE_URL}/nocodb/${tableName}/${recordId}/comments`,
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/nocodb/${tableName}/${recordId}/comments`,
         {
           method: 'POST',
           body: JSON.stringify({ comment: newCommentText.trim() })
@@ -1888,7 +3068,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                 />
                 
                 {!isCategoryCollapsed && (
-                  <div className="ml-2">
+                  <div className="">
                     {Object.entries(subcategories)
                       .sort(([, fieldsA], [, fieldsB]) => {
                         // Sort subcategories by their subcategory_order
@@ -1910,7 +3090,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                             />
                             
                             {!isSubcategoryCollapsed && (
-                              <div className="space-y-1 ml-6">
+                              <div className="space-y-1">
                                 {fields.map((field, idx) => {
                                   const fieldId = field["Field ID"];
                                   const isProjectField = field.source === 'project';
@@ -1929,6 +3109,21 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                   }
 
                                   // Render based on field type
+                                  if (field.Type === "GeoData") {
+                                    return (
+                                      <GeoDataField
+                                        key={`${field.source}-${idx}`}
+                                        field={field}
+                                        fieldValue={fieldValue}
+                                        calculatedHeight={calculatedHeight}
+                                        isProjectField={isProjectField}
+                                        recordId={isProjectField ? (parentProject?._db_id || 0) : plot.id}
+                                        tableName={isProjectField ? "Projects" : "LandPlots"}
+                                        onDataUpdate={onDataUpdate}
+                                      />
+                                    );
+                                  }
+
                                   if (field.Type === "SingleLineText") {
                                     return (
                                       <SingleLineTextField
@@ -2008,8 +3203,15 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                         data-field-type={field.Type}
                                       >
                                         {/* Field name - top */}
-                                        <div className="text-sm font-medium text-red-800 mb-2 break-words">
-                                          {field["Field Name"]}
+                                        <div className="text-sm font-medium text-red-800 mb-2 break-words flex items-center gap-2">
+                                          <span>{field["Field Name"]}</span>
+                                          {field["Table"] === "Projects" && (
+                                            <div className="p-1 rounded bg-green-100 dark:bg-green-900/30" title="Project field">
+                                              <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                                              </svg>
+                                            </div>
+                                          )}
                                         </div>
 
                                         {/* Field info and value */}
@@ -2150,3 +3352,4 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
     </div>
   );
 };
+

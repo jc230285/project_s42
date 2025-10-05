@@ -2,7 +2,9 @@
 "use client";
 import { useSession, signIn } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import DashboardLayout from '@/components/DashboardLayout';
+import toast from 'react-hot-toast';
 import { 
   BarChart, 
   Bar, 
@@ -74,6 +76,18 @@ const recentProjects = [
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
+  const searchParams = useSearchParams();
+
+  // Show toast if redirected from unauthorized page
+  useEffect(() => {
+    const from = searchParams.get('from');
+    if (from === 'unauthorized') {
+      toast('Redirected from unauthorized page', {
+        icon: '🔒',
+        duration: 3000,
+      });
+    }
+  }, [searchParams]);
 
   if (status === "loading") {
     return (
@@ -86,45 +100,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (!session) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-background to-secondary">
-        <header className="bg-card shadow-sm border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <img
-                  src="https://static.wixstatic.com/media/02157e_2734ffe4f4d44b319f9cc6c5f92628bf~mv2.png/v1/fill/w_506,h_128,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Scale42%20Logo%200_1%20-%20White%20-%202kpx.png"
-                  alt="Scale42 Logo"
-                  className="h-8 w-auto bg-muted px-2 py-1 rounded"
-                />
-              </div>
-              <button
-                className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                onClick={() => signIn("google")}
-              >
-                Sign In
-              </button>
-            </div>
-          </div>
-        </header>
-        
-        <main className="flex min-h-screen flex-col items-center justify-center px-4">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold text-foreground mb-4">Welcome to Scale42 Project Manager</h1>
-            <p className="text-xl text-muted-foreground mb-8">Manage your renewable energy projects with ease</p>
-            <button
-              className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-3 rounded-lg text-lg font-medium transition-colors shadow-lg"
-              onClick={() => signIn("google")}
-            >
-              Sign in with Google
-            </button>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
+  // Show public dashboard for everyone (logged in or not)
   return (
     <DashboardLayout>
       <div className="space-y-8">

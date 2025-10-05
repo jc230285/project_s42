@@ -1,56 +1,90 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { getUserGroups } from '@/lib/auth-utils';
+import { ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
-import { AlertTriangle, Home } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function UnauthorizedPage() {
+  const router = useRouter();
   const { data: session } = useSession();
+  const userGroups = session ? getUserGroups(session) : [];
+
+  useEffect(() => {
+    // Show toast on page load
+    toast.error('Access denied to the requested page', {
+      duration: 3000,
+    });
+
+    // Automatically redirect to dashboard after 3 seconds
+    const timer = setTimeout(() => {
+      toast('Redirecting to dashboard...', {
+        icon: '↩️',
+        duration: 2000,
+      });
+      
+      setTimeout(() => {
+        router.push('/?from=unauthorized');
+      }, 500);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [router]);
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="max-w-md w-full mx-4">
-        <div className="bg-card border border-border rounded-lg p-8 text-center shadow-lg">
-          <div className="flex justify-center mb-6">
-            <div className="bg-yellow-100 dark:bg-yellow-900 p-3 rounded-full">
-              <AlertTriangle className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
-            </div>
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="text-center max-w-md px-6">
+        <div className="flex justify-center mb-6">
+          <div className="rounded-full bg-destructive/10 p-6">
+            <ShieldAlert className="h-16 w-16 text-destructive" />
           </div>
-          
-          <h1 className="text-2xl font-bold text-foreground mb-4">
-            Access Denied
-          </h1>
-          
-          <p className="text-muted-foreground mb-6">
-            You don't have permission to access this page. Only users with Scale42 group access can view this content.
-          </p>
-          
-          {session?.user?.email && (
-            <div className="bg-muted p-3 rounded-md mb-6">
-              <p className="text-sm text-muted-foreground">
-                Signed in as: <span className="font-medium">{session.user.email}</span>
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Your account domain: <span className="font-medium">
-                  {session.user.email.split('@')[1]}
+        </div>
+        
+        <h1 className="text-3xl font-bold mb-3 text-foreground">
+          Access Denied
+        </h1>
+        
+        <p className="text-muted-foreground mb-6">
+          You don't have permission to access this page.
+        </p>
+        
+        {userGroups.length > 0 && (
+          <div className="bg-muted/50 rounded-lg p-4 mb-6">
+            <p className="text-sm text-muted-foreground mb-2">Your groups:</p>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {userGroups.map((group) => (
+                <span
+                  key={group}
+                  className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                >
+                  {group}
                 </span>
-              </p>
+              ))}
             </div>
-          )}
-          
-          <div className="space-y-3">
-            <Link href="/dashboard">
-              <Button className="w-full">
-                <Home className="h-4 w-4 mr-2" />
-                Go to Dashboard
-              </Button>
-            </Link>
-            
-            <p className="text-xs text-muted-foreground">
-              If you believe you should have access, please contact your administrator.
-            </p>
           </div>
+        )}
+        
+        <p className="text-sm text-muted-foreground mb-6">
+          You will be redirected to the dashboard in a moment...
+        </p>
+        
+        <div className="flex gap-3 justify-center">
+          <Button
+            onClick={() => router.push('/?from=unauthorized')}
+            variant="default"
+          >
+            Go to Dashboard
+          </Button>
+          
+          <Button
+            onClick={() => router.back()}
+            variant="outline"
+          >
+            Go Back
+          </Button>
         </div>
       </div>
     </div>

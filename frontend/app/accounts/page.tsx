@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { WithScale42Access } from '@/components/WithScale42Access';
+import toast from 'react-hot-toast';
 
 interface Company {
   id: number;
@@ -513,13 +514,18 @@ function AddCompanyModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       });
 
       if (response.ok) {
+        toast.success('Company created successfully');
         onSuccess();
       } else {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        toast.error(errorData.detail || 'Failed to create company');
         throw new Error('Failed to create company');
       }
     } catch (error) {
       console.error('Error creating company:', error);
-      alert('Failed to create company');
+      if (error instanceof Error && error.message !== 'Failed to create company') {
+        toast.error('Failed to create company');
+      }
     } finally {
       setLoading(false);
     }
@@ -688,13 +694,18 @@ function AddAccountModal({
       });
 
       if (response.ok) {
+        toast.success('Account created successfully');
         onSuccess();
       } else {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        toast.error(errorData.detail || 'Failed to create account');
         throw new Error('Failed to create account');
       }
     } catch (error) {
       console.error('Error creating account:', error);
-      alert('Failed to create account');
+      if (error instanceof Error && error.message !== 'Failed to create account') {
+        toast.error('Failed to create account');
+      }
     } finally {
       setLoading(false);
     }

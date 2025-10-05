@@ -2,25 +2,27 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
-// Define protected routes that require Scale42 group membership
-const SCALE42_PROTECTED_ROUTES = [
-  '/projects',
-  '/map',
-  '/schema',
-  '/hoyanger',
-  '/accounts',
-  '/users'
-];
+/**
+ * Middleware for basic authentication checks
+ * 
+ * NOTE: Page-level authorization is now handled by the WithPageAccess component
+ * which checks database-driven page permissions. This middleware only ensures
+ * the user is authenticated (has a valid session).
+ */
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Check if the route is protected
-  const isProtectedRoute = SCALE42_PROTECTED_ROUTES.some(route => 
-    pathname.startsWith(route)
-  );
-
-  if (!isProtectedRoute) {
+  // Skip middleware for public routes, API routes, and static files
+  if (
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/static/') ||
+    pathname === '/' ||
+    pathname === '/login' ||
+    pathname === '/unauthorized' ||
+    pathname.includes('.')
+  ) {
     return NextResponse.next();
   }
 
@@ -37,31 +39,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Check if user belongs to Scale42 group
-  const userGroups = token.groups as string[] || [];
-  console.log('Middleware: User groups from token:', userGroups);
-  const hasScale42Access = userGroups.some(group => 
-    group.toLowerCase() === 'scale42' || 
-    group.toLowerCase() === 'scale-42' || 
-    group.toLowerCase() === 'scale_42'
-  );
-
-  if (!hasScale42Access) {
-    // Redirect to unauthorized page or dashboard
-    const unauthorizedUrl = new URL('/unauthorized', request.url);
-    return NextResponse.redirect(unauthorizedUrl);
-  }
-
+  // User is authenticated, allow the request to proceed
+  // Page-level authorization will be handled by WithPageAccess component
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
-    '/projects/:path*',
-    '/map/:path*',
-    '/schema/:path*',
-    '/hoyanger/:path*',
-    '/accounts/:path*',
-    '/users/:path*'
+    /*
+     * Match all request paths except:
+     * - api routes
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico, etc (public files)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.svg|.*\\.png).*)',
   ]
 };

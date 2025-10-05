@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { PlotDisplay } from './PlotDisplay';
-import { WithScale42Access } from '@/components/WithScale42Access';
+import { WithPageAccess } from '@/components/WithPageAccess';
+import { getUserGroups } from '@/lib/auth-utils';
+
+console.log('📄 projects/page.tsx: File loaded');
 
 interface PlotData {
   raw: string;
@@ -103,20 +106,24 @@ interface PlotsResponse {
 }
 
 export default function ProjectsPage() {
+  console.log('📄 ProjectsPage: Component rendering');
   return (
-    // <WithScale42Access>
+    <WithPageAccess pagePath="/projects">
       <ProjectsPageContent />
-    // </WithScale42Access>
+    </WithPageAccess>
   );
 }
 
 function ProjectsPageContent() {
+  console.log('📄 ProjectsPageContent: Component rendering');
   const { data: session, status } = useSession();
   const router = useRouter();
   const [allProjects, setAllProjects] = useState<ProjectData[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectData[]>([]);
   const [projectPartners, setProjectPartners] = useState<string[]>([]);
   const [selectedPartner, setSelectedPartner] = useState<string>('');
+  const [agents, setAgents] = useState<string[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedPlotIds, setSelectedPlotIds] = useState<string[]>([]);  // Changed from selectedProjectIds
   const [plotsData, setPlotsData] = useState<PlotsResponse | null>(null);
@@ -124,6 +131,10 @@ function ProjectsPageContent() {
   const [loading, setLoading] = useState(true);
   const [schemaData, setSchemaData] = useState<any[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
+  
+  // Get user groups for role-based filtering
+  const userGroups = session ? getUserGroups(session) : [];
+  const isAgentPeter = userGroups.some(group => group.toLowerCase() === 'agent peter');
   
   // Sidebar state for filters - automatically open when no sites are selected
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -311,7 +322,7 @@ function ProjectsPageContent() {
   const fetchProjectPartners = async () => {
     try {
       const response = await makeAuthenticatedRequest(
-        `${process.env.BACKEND_BASE_URL}/projects/project-partners`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/project-partners`
       );
       if (response.ok) {
         const data: ProjectPartnersResponse = await response.json();
@@ -322,6 +333,30 @@ function ProjectsPageContent() {
     }
   };
 
+  // Fetch agents for dropdown
+  const fetchAgents = () => {
+    try {
+      console.log('Fetching agents from', allProjects.length, 'projects');
+      
+      // Extract unique agents from all projects
+      const allAgents = allProjects.map(project => project.Agent);
+      console.log('All agent values:', allAgents);
+      
+      const uniqueAgents = Array.from(
+        new Set(
+          allProjects
+            .map(project => project.Agent)
+            .filter((agent): agent is string => agent !== undefined && agent !== null && agent.trim() !== '')
+        )
+      ).sort();
+      
+      console.log('Unique agents found:', uniqueAgents);
+      setAgents(uniqueAgents);
+    } catch (err) {
+      console.error('Error extracting agents:', err);
+    }
+  };
+
   // Fetch all projects
   const fetchAllProjects = async () => {
     try {
@@ -329,7 +364,7 @@ function ProjectsPageContent() {
       setError(null);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.BACKEND_BASE_URL}/projects/projects`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/projects`
       );
       
       if (response.ok) {
@@ -354,7 +389,7 @@ function ProjectsPageContent() {
     try {
       setSchemaLoading(true);
       const response = await makeAuthenticatedRequest(
-        `${process.env.BACKEND_BASE_URL}/projects/schema`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/schema`
       );
       
       if (response.ok) {
@@ -388,7 +423,7 @@ function ProjectsPageContent() {
       console.log('Converted plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.BACKEND_BASE_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}`
       );
       
       if (response.ok) {
@@ -510,6 +545,13 @@ function ProjectsPageContent() {
       );
     }
 
+    // Filter by agent
+    if (selectedAgent) {
+      filtered = filtered.filter(project => 
+        project.Agent === selectedAgent
+      );
+    }
+
     // Filter by search term
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
@@ -517,7 +559,8 @@ function ProjectsPageContent() {
         const searchableFields = [
           project["Project Name"] || "",
           project.Country || "",
-          project["Primary Project Partner"] || ""
+          project["Primary Project Partner"] || "",
+          project.Agent || ""
         ];
         return searchableFields.some(field => 
           field.toLowerCase().includes(searchLower)
@@ -538,11 +581,73 @@ function ProjectsPageContent() {
   // Handle partner filter change
   const handlePartnerFilter = (partner: string) => {
     setSelectedPartner(partner);
+    
+    // Clear selected plots that don't belong to projects matching the filters
+    if (selectedPlotIds.length > 0) {
+      let filteredProjects = allProjects;
+      
+      // Apply partner filter
+      if (partner) {
+        filteredProjects = filteredProjects.filter(project => 
+          project["Primary Project Partner"] === partner
+        );
+      }
+      
+      // Apply existing agent filter
+      if (selectedAgent) {
+        filteredProjects = filteredProjects.filter(project => 
+          project.Agent === selectedAgent
+        );
+      }
+      
+      // Get valid plot IDs from filtered projects
+      const validPlotIds = filteredProjects
+        .flatMap(project => project.P_PlotID || [])
+        .map(plot => plot.site_id);
+      
+      setSelectedPlotIds(prev => 
+        prev.filter(plotId => validPlotIds.includes(plotId))
+      );
+    }
+  };
+
+  // Handle agent filter change
+  const handleAgentFilter = (agent: string) => {
+    setSelectedAgent(agent);
+    
+    // Clear selected plots that don't belong to projects matching the filters
+    if (selectedPlotIds.length > 0) {
+      let filteredProjects = allProjects;
+      
+      // Apply existing partner filter
+      if (selectedPartner) {
+        filteredProjects = filteredProjects.filter(project => 
+          project["Primary Project Partner"] === selectedPartner
+        );
+      }
+      
+      // Apply agent filter
+      if (agent) {
+        filteredProjects = filteredProjects.filter(project => 
+          project.Agent === agent
+        );
+      }
+      
+      // Get valid plot IDs from filtered projects
+      const validPlotIds = filteredProjects
+        .flatMap(project => project.P_PlotID || [])
+        .map(plot => plot.site_id);
+      
+      setSelectedPlotIds(prev => 
+        prev.filter(plotId => validPlotIds.includes(plotId))
+      );
+    }
   };
 
   // Clear all filters
   const clearFilters = () => {
     setSelectedPartner("");
+    setSelectedAgent("");
     setSearchTerm("");
   };
 
@@ -570,12 +675,24 @@ function ProjectsPageContent() {
     }
   }, [session]);
 
+  // Apply group-based filtering for Agent Peter users
+  useEffect(() => {
+    if (isAgentPeter && allProjects.length > 0) {
+      console.log('🔐 Agent Peter detected: Auto-applying filters');
+      // Lock to "Peter Sladey - NMG Estonia" agent filter
+      setSelectedAgent('Peter Sladey - NMG Estonia');
+      // Partner filter stays empty (All Partners)
+      setSelectedPartner('');
+    }
+  }, [isAgentPeter, allProjects.length]);
+
   // Filter projects when filters change
   useEffect(() => {
     if (allProjects.length > 0) {
+      fetchAgents(); // Extract agents when projects are loaded
       filterProjects();
     }
-  }, [selectedPartner, searchTerm, allProjects]);
+  }, [selectedPartner, selectedAgent, searchTerm, allProjects]);
 
   // Fetch plots data when selected plot IDs change
   useEffect(() => {
@@ -745,24 +862,58 @@ function ProjectsPageContent() {
             <div className="p-4 h-full flex flex-col">
               {/* Filtering Controls */}
               <div className="space-y-4 mb-6">
-                {/* Partner Dropdown */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Project Partner
-                  </label>
-                  <select
-                    value={selectedPartner}
-                    onChange={(e) => handlePartnerFilter(e.target.value)}
-                    className="w-full p-2 border border-border rounded-md bg-background text-foreground"
-                  >
-                    <option value="">All Partners</option>
-                    {projectPartners.map((partner) => (
-                      <option key={partner} value={partner}>
-                        {partner}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* Partner Dropdown - Hidden for Agent Peter */}
+                {!isAgentPeter && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Project Partner
+                    </label>
+                    <select
+                      value={selectedPartner}
+                      onChange={(e) => handlePartnerFilter(e.target.value)}
+                      className="w-full p-2 border border-border rounded-md bg-background text-foreground"
+                    >
+                      <option value="">All Partners</option>
+                      {projectPartners.map((partner) => (
+                        <option key={partner} value={partner}>
+                          {partner}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Agent Dropdown - Hidden for Agent Peter */}
+                {!isAgentPeter && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Agent
+                    </label>
+                    <select
+                      value={selectedAgent}
+                      onChange={(e) => handleAgentFilter(e.target.value)}
+                      className="w-full p-2 border border-border rounded-md bg-background text-foreground"
+                    >
+                      <option value="">All Agents</option>
+                      {agents.map((agent) => (
+                        <option key={agent} value={agent}>
+                          {agent}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Show active filters for Agent Peter users */}
+                {isAgentPeter && (
+                  <div className="bg-accent/50 border border-border rounded-md p-3">
+                    <p className="text-sm font-medium text-foreground mb-2">Active Filters:</p>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>• Partner: <span className="text-foreground">All Partners</span></p>
+                      <p>• Agent: <span className="text-foreground">Peter Sladey - NMG Estonia</span></p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Search Input */}
                 <div>
@@ -773,19 +924,30 @@ function ProjectsPageContent() {
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by name, country, partner..."
+                    placeholder="Search by name, country, partner, agent..."
                     className="w-full p-2 border border-border rounded-md bg-background text-foreground"
                   />
                 </div>
 
-                {/* Clear Filters */}
-                <Button
-                  onClick={clearFilters}
-                  variant="outline"
-                  className="w-full"
-                >
-                  Clear Filters
-                </Button>
+                {/* Clear Filters - Only show search clear for Agent Peter */}
+                {!isAgentPeter && (
+                  <Button
+                    onClick={clearFilters}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Clear Filters
+                  </Button>
+                )}
+                {isAgentPeter && searchTerm && (
+                  <Button
+                    onClick={() => setSearchTerm('')}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Clear Search
+                  </Button>
+                )}
               </div>
 
               {/* Plot Selection Section */}
@@ -794,7 +956,7 @@ function ProjectsPageContent() {
                   <h3 className="text-md font-medium text-foreground">Plot Selection</h3>
                   {selectedPlotIds.length > 0 && (
                     <Button onClick={clearPlotSelection} variant="outline" size="sm">
-                      Clear ({selectedPlotIds.length})
+                      Clear Plot Selection ({selectedPlotIds.length})
                     </Button>
                   )}
                 </div>
@@ -804,6 +966,7 @@ function ProjectsPageContent() {
                     <>
                       Showing {filteredProjects.length} projects
                       {selectedPartner && ` • Partner: ${selectedPartner}`}
+                      {selectedAgent && ` • Agent: ${selectedAgent}`}
                       {searchTerm && ` • Search: "${searchTerm}"`}
                     </>
                   )}

@@ -14,7 +14,7 @@ from typing import Optional, Any
 from collections import OrderedDict
 import base64
 from dotenv import load_dotenv
-from . import nocodb_sync
+# import nocodb_sync  # Comment out for now since it's not needed for page management
 
 # Load environment variables from .env file
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
@@ -122,6 +122,93 @@ def json_serial(obj):
     else:
         # Convert unknown types to string as last resort
         return str(obj)
+
+
+# ===== UTILITY FUNCTIONS FOR USER NAME LOOKUP =====
+
+def get_user_name_from_email(email: str) -> str:
+    """
+    Get user's display name from email address by querying the users table.
+    Returns the user's name if found, otherwise returns the email address.
+    """
+    if not email:
+        return "Unknown User"
+    
+    try:
+        conn = mysql.connector.connect(
+            host=os.getenv("DB_HOST", "10.1.8.51"),
+            user=os.getenv("DB_USER", "s42project"),
+            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            database=os.getenv("DB_NAME", "nocodb"),
+            port=int(os.getenv("DB_PORT", "3306")),
+        )
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT name FROM users WHERE email = %s", (email,))
+        user_data = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if user_data and isinstance(user_data, dict) and user_data.get('name'):
+            return user_data['name']
+        else:
+            return email  # Return email if no name found
+    except Exception as e:
+        print(f"Error fetching user name for {email}: {e}")
+        return email  # Return email on error
+
+
+def get_user_names_batch(emails: list) -> dict:
+    """
+    Get user names for multiple emails in a single database query.
+    Returns a dictionary mapping email -> name.
+    More efficient than individual queries when processing multiple items.
+    """
+    if not emails:
+        return {}
+    
+    # Remove duplicates and filter out None/empty values
+    unique_emails = list(set([email for email in emails if email]))
+    
+    if not unique_emails:
+        return {}
+    
+    try:
+        conn = mysql.connector.connect(
+            host=os.getenv("DB_HOST", "10.1.8.51"),
+            user=os.getenv("DB_USER", "s42project"),
+            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            database=os.getenv("DB_NAME", "nocodb"),
+            port=int(os.getenv("DB_PORT", "3306")),
+        )
+        cursor = conn.cursor(dictionary=True)
+        
+        # Create placeholders for IN clause
+        placeholders = ', '.join(['%s'] * len(unique_emails))
+        query = f"SELECT email, name FROM users WHERE email IN ({placeholders})"
+        cursor.execute(query, tuple(unique_emails))
+        results = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        # Build email -> name mapping
+        email_to_name = {}
+        for row in results:
+            if isinstance(row, dict) and row.get('email') and row.get('name'):
+                email_to_name[row['email']] = row['name']
+        
+        # Fill in missing emails with email as fallback
+        for email in unique_emails:
+            if email not in email_to_name:
+                email_to_name[email] = email
+        
+        return email_to_name
+    except Exception as e:
+        print(f"Error fetching user names in batch: {e}")
+        # Return dict with emails as fallback
+        return {email: email for email in unique_emails}
+
+# ===== END UTILITY FUNCTIONS =====
+
 
 def process_schema_data(user_token: Optional[str] = None):
     """Helper function to process schema data with proper ordering from NocoDB dropdown options"""
@@ -319,6 +406,10 @@ def _coerce_float(value):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:3000",  # Dev frontend
+        "http://localhost:3150",  # Docker frontend
+        "http://localhost:8000",  # Dev backend
+        "http://localhost:8150",  # Docker backend
         os.getenv('FRONTEND_BASE_URL', 'http://localhost:3150'),
         os.getenv('BACKEND_BASE_URL', 'http://localhost:8150')
     ],
@@ -1356,12 +1447,12 @@ def nocodb_sync_endpoint(current_user: dict = Depends(get_current_user)):
 
 @app.on_event("startup")
 async def startup_event():
-    print("🚀 FastAPI STARTUP - execute_nocodb_query function loaded", flush=True)
+    print("FastAPI STARTUP - execute_nocodb_query function loaded", flush=True)
 
 class NocoDBQuery(BaseModel):
     query: str
 
-print("🔧 DEFINING NOCODB QUERY FUNCTION", flush=True)
+print("DEFINING NOCODB QUERY FUNCTION", flush=True)
 
 # TEST ROUTE TO VERIFY MY MODIFICATIONS ARE WORKING
 @app.post("/test-debug-route", tags=["DEBUG"])
@@ -1620,16 +1711,45 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
 ######################################################################
 @app.get("/users", tags=["User Management"])
 def get_users(current_user: dict = Depends(get_current_user)):
-    """Get all registered users"""
+    """Get all registered users with their groups"""
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
         
-        # First, ensure the users table exists
+        # First, ensure tables exist
         create_users_table(cursor)
+        create_groups_table(cursor)
+        create_user_groups_table(cursor)
         
-        cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
+        # Get users with their groups
+        cursor.execute("""
+            SELECT u.*, 
+                   GROUP_CONCAT(
+                       CONCAT(g.name, ':', ug.role) 
+                       ORDER BY g.name SEPARATOR '; '
+                   ) as groups
+            FROM users u
+            LEFT JOIN user_groups ug ON u.id = ug.user_id AND ug.is_active = TRUE
+            LEFT JOIN groups g ON ug.group_id = g.id AND g.is_active = TRUE
+            WHERE u.is_active = TRUE
+            GROUP BY u.id
+            ORDER BY u.created_at DESC
+        """)
+        
         users = cursor.fetchall()
+        
+        # Convert groups string to list of objects for better frontend handling
+        for user in users:
+            if user['groups']:
+                group_list = []
+                for group_str in user['groups'].split('; '):
+                    if ':' in group_str:
+                        name, role = group_str.split(':', 1)
+                        group_list.append({"name": name, "role": role})
+                user['groups'] = group_list
+            else:
+                user['groups'] = []
+        
         cursor.close()
         conn.close()
         # Convert to JSON with datetime serialization
@@ -1647,14 +1767,330 @@ def get_groups(current_user: dict = Depends(get_current_user)):
         
         # First, ensure the groups table exists
         create_groups_table(cursor)
+        create_user_groups_table(cursor)
         
-        cursor.execute("SELECT * FROM groups ORDER BY name")
+        cursor.execute("SELECT * FROM groups WHERE is_active = TRUE ORDER BY name")
         groups = cursor.fetchall()
         cursor.close()
         conn.close()
         # Convert to JSON with datetime serialization
         json_data = json.loads(json.dumps(groups, default=json_serial))
         return JSONResponse(content=json_data)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/auth/user-groups/{email}", tags=["Authentication"])
+def get_user_groups_for_auth(email: str):
+    """
+    Public endpoint to fetch user groups during authentication flow.
+    Does NOT require authentication - used by NextAuth callbacks.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Get user
+        cursor.execute("SELECT * FROM users WHERE email = %s AND is_active = TRUE", (email,))
+        user = cursor.fetchone()
+        
+        if not user:
+            cursor.close()
+            conn.close()
+            return {"user": None, "groups": []}
+        
+        # Get user's groups
+        query = """
+        SELECT g.id, g.name, g.description, g.domain
+        FROM groups g
+        INNER JOIN user_groups ug ON g.id = ug.group_id
+        WHERE ug.user_id = %s 
+          AND g.is_active = TRUE 
+          AND ug.is_active = TRUE
+        ORDER BY g.name
+        """
+        cursor.execute(query, (user['id'],))
+        groups = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "user": user,
+            "groups": groups
+        }
+            
+    except Exception as e:
+        print(f"Error fetching user groups for auth: {str(e)}")
+        return {"user": None, "groups": [], "error": str(e)}
+
+# Pydantic models for user/group management
+class UserGroupAssignment(BaseModel):
+    user_id: int
+    group_id: int
+    role: str = "member"
+
+class CreateGroup(BaseModel):
+    name: str
+    domain: Optional[str] = None
+    description: Optional[str] = None
+    permissions: Optional[dict] = None
+
+class UpdateUser(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+    nocodbapi: Optional[str] = None
+
+class UpdateGroup(BaseModel):
+    name: Optional[str] = None
+    domain: Optional[str] = None
+    description: Optional[str] = None
+    permissions: Optional[dict] = None
+    is_active: Optional[bool] = None
+
+@app.get("/users/{user_id}/groups", tags=["User Management"])
+def get_user_groups(user_id: int, current_user: dict = Depends(get_current_user)):
+    """Get all groups for a specific user"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT g.*, ug.role, ug.assigned_at, ug.is_active as membership_active
+            FROM groups g
+            JOIN user_groups ug ON g.id = ug.group_id
+            WHERE ug.user_id = %s AND ug.is_active = TRUE AND g.is_active = TRUE
+            ORDER BY g.name
+        """, (user_id,))
+        
+        groups = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content=json.loads(json.dumps(groups, default=json_serial)))
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/groups/{group_id}/users", tags=["User Management"])
+def get_group_users(group_id: int, current_user: dict = Depends(get_current_user)):
+    """Get all users in a specific group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT u.*, ug.role, ug.assigned_at, ug.is_active as membership_active
+            FROM users u
+            JOIN user_groups ug ON u.id = ug.user_id
+            WHERE ug.group_id = %s AND ug.is_active = TRUE AND u.is_active = TRUE
+            ORDER BY u.name, u.email
+        """, (group_id,))
+        
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content=json.loads(json.dumps(users, default=json_serial)))
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/users/{user_id}/groups", tags=["User Management"])
+def assign_user_to_group_endpoint(user_id: int, assignment: UserGroupAssignment, current_user: dict = Depends(get_current_user)):
+    """Assign a user to a group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Ensure tables exist
+        create_users_table(cursor)
+        create_groups_table(cursor)
+        create_user_groups_table(cursor)
+        
+        # Check if user and group exist
+        cursor.execute("SELECT id FROM users WHERE id = %s AND is_active = TRUE", (user_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return JSONResponse(content={"error": "User not found"}, status_code=404)
+        
+        cursor.execute("SELECT id FROM groups WHERE id = %s AND is_active = TRUE", (assignment.group_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return JSONResponse(content={"error": "Group not found"}, status_code=404)
+        
+        # Get current user ID for assignment tracking
+        assigner_id = None
+        if current_user and 'email' in current_user:
+            cursor.execute("SELECT id FROM users WHERE email = %s", (current_user['email'],))
+            assigner = cursor.fetchone()
+            if assigner:
+                assigner_id = assigner['id']
+        
+        # Insert or update the user-group relationship
+        try:
+            cursor.execute("""
+                INSERT INTO user_groups (user_id, group_id, role, assigned_by, is_active)
+                VALUES (%s, %s, %s, %s, TRUE)
+                ON DUPLICATE KEY UPDATE
+                role = VALUES(role),
+                assigned_by = VALUES(assigned_by),
+                assigned_at = CURRENT_TIMESTAMP,
+                is_active = TRUE
+            """, (user_id, assignment.group_id, assignment.role, assigner_id))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            return JSONResponse(content={"message": "User assigned to group successfully"})
+        except Exception as e:
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            return JSONResponse(content={"error": f"Failed to assign user to group: {str(e)}"}, status_code=500)
+            
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.delete("/users/{user_id}/groups/{group_id}", tags=["User Management"])
+def remove_user_from_group(user_id: int, group_id: int, current_user: dict = Depends(get_current_user)):
+    """Remove a user from a group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Set membership as inactive instead of deleting
+        cursor.execute("""
+            UPDATE user_groups 
+            SET is_active = FALSE, assigned_at = CURRENT_TIMESTAMP
+            WHERE user_id = %s AND group_id = %s
+        """, (user_id, group_id))
+        
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            return JSONResponse(content={"error": "User-group relationship not found"}, status_code=404)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content={"message": "User removed from group successfully"})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/groups", tags=["User Management"])
+def create_group(group: CreateGroup, current_user: dict = Depends(get_current_user)):
+    """Create a new group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        create_groups_table(cursor)
+        
+        permissions_json = json.dumps(group.permissions) if group.permissions else None
+        
+        cursor.execute("""
+            INSERT INTO groups (name, domain, description, permissions, is_active)
+            VALUES (%s, %s, %s, %s, TRUE)
+        """, (group.name, group.domain, group.description, permissions_json))
+        
+        group_id = cursor.lastrowid
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content={"message": "Group created successfully", "group_id": group_id})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.put("/groups/{group_id}", tags=["User Management"])
+def update_group(group_id: int, group: UpdateGroup, current_user: dict = Depends(get_current_user)):
+    """Update a group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Build update query dynamically
+        updates = []
+        params = []
+        
+        if group.name is not None:
+            updates.append("name = %s")
+            params.append(group.name)
+        if group.domain is not None:
+            updates.append("domain = %s")
+            params.append(group.domain)
+        if group.description is not None:
+            updates.append("description = %s")
+            params.append(group.description)
+        if group.permissions is not None:
+            updates.append("permissions = %s")
+            params.append(json.dumps(group.permissions))
+        if group.is_active is not None:
+            updates.append("is_active = %s")
+            params.append(group.is_active)
+        
+        if not updates:
+            return JSONResponse(content={"error": "No fields to update"}, status_code=400)
+        
+        params.append(group_id)
+        query = f"UPDATE groups SET {', '.join(updates)} WHERE id = %s"
+        
+        cursor.execute(query, params)
+        
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            return JSONResponse(content={"error": "Group not found"}, status_code=404)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content={"message": "Group updated successfully"})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.put("/users/{user_id}", tags=["User Management"])
+def update_user(user_id: int, user: UpdateUser, current_user: dict = Depends(get_current_user)):
+    """Update a user"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Build update query dynamically
+        updates = []
+        params = []
+        
+        if user.name is not None:
+            updates.append("name = %s")
+            params.append(user.name)
+        if user.is_active is not None:
+            updates.append("is_active = %s")
+            params.append(user.is_active)
+        if user.nocodbapi is not None:
+            updates.append("nocodbapi = %s")
+            params.append(user.nocodbapi)
+        
+        if not updates:
+            return JSONResponse(content={"error": "No fields to update"}, status_code=400)
+        
+        params.append(user_id)
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s"
+        
+        cursor.execute(query, params)
+        
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            return JSONResponse(content={"error": "User not found"}, status_code=404)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return JSONResponse(content={"message": "User updated successfully"})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
@@ -1674,6 +2110,7 @@ def create_or_update_user(current_user: dict = Depends(get_current_user)):
         # Ensure tables exist
         create_users_table(cursor)
         create_groups_table(cursor)
+        create_user_groups_table(cursor)
         
         # Check if user exists
         cursor.execute("SELECT * FROM users WHERE email = %s", (user_email,))
@@ -1773,20 +2210,29 @@ def create_users_table(cursor):
             name VARCHAR(255),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_login TIMESTAMP,
-            group_id INT,
+            is_active BOOLEAN DEFAULT TRUE,
             nocodbapi VARCHAR(255),
-            INDEX idx_email (email)
+            INDEX idx_email (email),
+            INDEX idx_active (is_active)
         )
     """)
     
-    # Add nocodbapi column if it doesn't exist (for existing tables)
+    # Remove the old group_id column if it exists (migration)
     try:
-        cursor.execute("""
-            ALTER TABLE users 
-            ADD COLUMN nocodbapi VARCHAR(255)
-        """)
+        cursor.execute("ALTER TABLE users DROP COLUMN group_id")
     except Exception:
-        # Column already exists or other error, ignore
+        # Column doesn't exist or other error, ignore
+        pass
+    
+    # Add new columns if they don't exist
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE")
+    except Exception:
+        pass
+    
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN nocodbapi VARCHAR(255)")
+    except Exception:
         pass
 
 def create_groups_table(cursor):
@@ -1796,51 +2242,102 @@ def create_groups_table(cursor):
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(255) UNIQUE NOT NULL,
             domain VARCHAR(255),
+            description TEXT,
+            permissions JSON,
+            is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_domain (domain)
+            INDEX idx_domain (domain),
+            INDEX idx_active (is_active)
         )
     """)
     
-    # Create default groups
+    # Add new columns if they don't exist
+    try:
+        cursor.execute("ALTER TABLE groups ADD COLUMN description TEXT")
+    except Exception:
+        pass
+    
+    try:
+        cursor.execute("ALTER TABLE groups ADD COLUMN permissions JSON")
+    except Exception:
+        pass
+    
+    try:
+        cursor.execute("ALTER TABLE groups ADD COLUMN is_active BOOLEAN DEFAULT TRUE")
+    except Exception:
+        pass
+    
+    # Create default groups with permissions
     default_groups = [
-        ("Guests", None),
-        ("Scale42", "scale-42.com"),
-        ("Scale42", "edbmotte.com"),
+        ("Guests", None, "Guest users with limited access", '{"pages": ["dashboard", "tools"], "actions": ["read"]}'),
+        ("Scale42", "scale-42.com", "Scale42 domain users with full access", '{"pages": ["dashboard", "projects", "map", "schema", "accounts", "hoyanger", "users", "tools"], "actions": ["read", "write", "delete", "admin"]}'),
+        ("Scale42", "edbmotte.com", "EDB Motte domain users with full access", '{"pages": ["dashboard", "projects", "map", "schema", "accounts", "hoyanger", "users", "tools"], "actions": ["read", "write", "delete", "admin"]}'),
+        ("Developers", None, "Developer group with technical access", '{"pages": ["dashboard", "projects", "map", "schema", "tools"], "actions": ["read", "write"]}'),
+        ("Viewers", None, "Read-only access to most content", '{"pages": ["dashboard", "projects", "map"], "actions": ["read"]}'),
     ]
     
-    for group_name, domain in default_groups:
+    for group_name, domain, description, permissions in default_groups:
         cursor.execute(
-            "INSERT IGNORE INTO groups (name, domain) VALUES (%s, %s)",
-            (group_name, domain)
+            "INSERT IGNORE INTO groups (name, domain, description, permissions) VALUES (%s, %s, %s, %s)",
+            (group_name, domain, description, permissions)
         )
 
-def assign_user_to_group(cursor, user_id, email):
+def create_user_groups_table(cursor):
+    """Create user_groups junction table for many-to-many relationship"""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_groups (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            group_id INT NOT NULL,
+            role VARCHAR(50) DEFAULT 'member',
+            assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            assigned_by INT,
+            is_active BOOLEAN DEFAULT TRUE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+            FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE KEY unique_user_group (user_id, group_id),
+            INDEX idx_user_id (user_id),
+            INDEX idx_group_id (group_id),
+            INDEX idx_active (is_active)
+        )
+    """)
+
+def assign_user_to_group(cursor, user_id, email, assigned_by=None):
     """Assign user to appropriate group based on email domain"""
     domain = email.split('@')[1] if '@' in email else None
     
     if domain:
         # Try to find a group for this domain
-        cursor.execute("SELECT id FROM groups WHERE domain = %s", (domain,))
+        cursor.execute("SELECT id FROM groups WHERE domain = %s AND is_active = TRUE", (domain,))
         group = cursor.fetchone()
         
         if group:
             group_id = group['id']
         else:
             # No specific group found, assign to Guests
-            cursor.execute("SELECT id FROM groups WHERE name = 'Guests' AND domain IS NULL")
+            cursor.execute("SELECT id FROM groups WHERE name = 'Guests' AND domain IS NULL AND is_active = TRUE")
             guest_group = cursor.fetchone()
             group_id = guest_group['id'] if guest_group else None
     else:
         # No domain, assign to Guests
-        cursor.execute("SELECT id FROM groups WHERE name = 'Guests' AND domain IS NULL")
+        cursor.execute("SELECT id FROM groups WHERE name = 'Guests' AND domain IS NULL AND is_active = TRUE")
         guest_group = cursor.fetchone()
         group_id = guest_group['id'] if guest_group else None
     
     if group_id:
-        cursor.execute(
-            "UPDATE users SET group_id = %s WHERE id = %s",
-            (group_id, user_id)
-        )
+        # Use the new many-to-many relationship
+        try:
+            cursor.execute(
+                "INSERT INTO user_groups (user_id, group_id, role, assigned_by) VALUES (%s, %s, %s, %s)",
+                (user_id, group_id, 'member', assigned_by)
+            )
+        except Exception as e:
+            # Relationship might already exist, update it instead
+            cursor.execute(
+                "UPDATE user_groups SET is_active = TRUE, assigned_at = CURRENT_TIMESTAMP, assigned_by = %s WHERE user_id = %s AND group_id = %s",
+                (assigned_by, user_id, group_id)
+            )
 
 
 
@@ -2285,16 +2782,28 @@ def get_user_info(email: str, current_user: dict = Depends(get_current_user)):
         # Create tables if they don't exist
         create_users_table(cursor)
         create_groups_table(cursor)
+        create_user_groups_table(cursor)
         
-        # Get user with group information
+        # Get user with group information using many-to-many relationship
         query = """
-        SELECT u.*, g.name as group_name, g.domain as group_domain
+        SELECT u.*, 
+               GROUP_CONCAT(g.name ORDER BY g.name SEPARATOR ', ') as group_names,
+               GROUP_CONCAT(g.domain ORDER BY g.name SEPARATOR ', ') as group_domains
         FROM users u
-        LEFT JOIN groups g ON u.group_id = g.id
+        LEFT JOIN user_groups ug ON u.id = ug.user_id AND ug.is_active = TRUE
+        LEFT JOIN groups g ON ug.group_id = g.id AND g.is_active = TRUE
         WHERE u.email = %s
+        GROUP BY u.id
         """
         cursor.execute(query, (email,))
         user_info = cursor.fetchone()
+        
+        # For backward compatibility, set group_name to first group if available
+        if user_info and user_info.get('group_names'):
+            first_group = user_info['group_names'].split(', ')[0]
+            user_info['group_name'] = first_group
+        elif user_info:
+            user_info['group_name'] = 'No Group'
         
         cursor.close()
         conn.close()
@@ -2317,62 +2826,42 @@ def create_user(user_data: dict, current_user: dict = Depends(get_current_user))
         # Create tables if they don't exist
         create_users_table(cursor)
         create_groups_table(cursor)
+        create_user_groups_table(cursor)
         
         email = user_data.get('email')
         name = user_data.get('name', '')
         
         if not email:
             return {"error": "Email is required"}
-            
-        # Extract domain from email
-        domain = email.split('@')[1] if '@' in email else None
         
-        # Find or create group based on domain
-        group_id = None
-        if domain:
-            # Check for existing group with this domain
-            cursor.execute("SELECT * FROM groups WHERE domain = %s", (domain,))
-            group = cursor.fetchone()
-            
-            if not group:
-                # For Scale42 domains, try to find existing Scale42 group first
-                if domain in ['scale42.no', 'scale-42.com']:
-                    cursor.execute("SELECT * FROM groups WHERE name = 'Scale42'")
-                    existing_scale42 = cursor.fetchone()
-                    if existing_scale42:
-                        group_id = existing_scale42['id']
-                    else:
-                        # Create new Scale42 group
-                        cursor.execute(
-                            "INSERT INTO groups (name, domain, created_at) VALUES (%s, %s, NOW())",
-                            ('Scale42', domain)
-                        )
-                        group_id = cursor.lastrowid
-                else:
-                    # Create new group for other domains
-                    group_name = domain.split('.')[0]
-                    cursor.execute(
-                        "INSERT INTO groups (name, domain, created_at) VALUES (%s, %s, NOW())",
-                        (group_name, domain)
-                    )
-                    group_id = cursor.lastrowid
-            else:
-                group_id = group['id']
+        # Check if user already exists
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        existing_user = cursor.fetchone()
         
-        # Create user
+        if existing_user:
+            return {"error": "User already exists"}
+        
+        # Create user without group_id
         cursor.execute(
-            """INSERT INTO users (email, name, group_id, created_at, last_login) 
-               VALUES (%s, %s, %s, NOW(), NOW())""",
-            (email, name, group_id)
+            """INSERT INTO users (email, name, created_at, last_login, is_active) 
+               VALUES (%s, %s, NOW(), NOW(), TRUE)""",
+            (email, name)
         )
         user_id = cursor.lastrowid
         
-        # Get the created user with group info
+        # Assign user to group using the new many-to-many relationship
+        assign_user_to_group(cursor, user_id, email)
+        
+        # Get the created user with group info using new many-to-many relationship
         cursor.execute("""
-            SELECT u.*, g.name as group_name, g.domain as group_domain
+            SELECT u.*, 
+                   GROUP_CONCAT(g.name ORDER BY g.name SEPARATOR ', ') as group_names,
+                   GROUP_CONCAT(g.domain ORDER BY g.name SEPARATOR ', ') as group_domains
             FROM users u
-            LEFT JOIN groups g ON u.group_id = g.id
+            LEFT JOIN user_groups ug ON u.id = ug.user_id AND ug.is_active = TRUE
+            LEFT JOIN groups g ON ug.group_id = g.id AND g.is_active = TRUE
             WHERE u.id = %s
+            GROUP BY u.id
         """, (user_id,))
         
         new_user = cursor.fetchone()
@@ -2865,9 +3354,36 @@ def get_nocodb_comments(table_name: str, record_id: str, current_user: dict = De
 
         if response.status_code == 200:
             comments_data = response.json()
+            
+            # Map email addresses to user names from database (batch query for efficiency)
+            formatted_comments = []
+            if isinstance(comments_data, list):
+                # Collect all unique emails first
+                all_emails = []
+                for comment in comments_data:
+                    user_email = comment.get("created_by") or comment.get("user")
+                    if user_email:
+                        all_emails.append(user_email)
+                
+                # Batch query for all user names
+                email_to_name = get_user_names_batch(all_emails)
+                
+                # Format comments with user names
+                for comment in comments_data:
+                    user_email = comment.get("created_by") or comment.get("user")
+                    user_name = email_to_name.get(user_email, user_email) if user_email else "Unknown User"
+                    
+                    # Add user_name field to comment
+                    formatted_comment = comment.copy()
+                    formatted_comment["user_email"] = user_email
+                    formatted_comment["user_name"] = user_name
+                    formatted_comments.append(formatted_comment)
+            else:
+                formatted_comments = comments_data
+            
             return JSONResponse(content={
                 "success": True,
-                "comments": comments_data,
+                "comments": formatted_comments,
                 "table_name": table_name,
                 "record_id": record_id,
                 "source": "NocoDB v1 API"
@@ -3331,32 +3847,21 @@ def get_audit_trail(table_name: str, record_id: str, current_user: dict = Depend
         data = response.json()
         audit_entries = data.get("list", [])
         
+        # Collect all unique emails for batch lookup
+        all_emails = []
+        for entry in audit_entries:
+            user_email = entry.get("user")
+            if user_email:
+                all_emails.append(user_email)
+        
+        # Batch query for all user names
+        email_to_name = get_user_names_batch(all_emails)
+        
         # Format the response with user names from database
         formatted_audit = []
         for entry in audit_entries:
             user_email = entry.get("user")
-            user_name = user_email  # Default to email
-            
-            # Try to get user name from database
-            if user_email:
-                try:
-                    # Query users table to get name
-                    conn = mysql.connector.connect(
-                        host=os.getenv("DB_HOST", "10.1.8.51"),
-                        user=os.getenv("DB_USER", "s42project"),
-                        password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
-                        database=os.getenv("DB_NAME", "nocodb"),
-                        port=int(os.getenv("DB_PORT", "3306")),
-                    )
-                    cursor = conn.cursor(dictionary=True)
-                    cursor.execute("SELECT name FROM users WHERE email = %s", (user_email,))
-                    user_data = cursor.fetchone()
-                    if user_data and isinstance(user_data, dict) and user_data.get('name'):
-                        user_name = user_data['name']
-                    cursor.close()
-                    conn.close()
-                except Exception as e:
-                    print(f"Error fetching user name for {user_email}: {e}")
+            user_name = email_to_name.get(user_email, user_email) if user_email else "Unknown User"
             
             # Parse the details field which contains old_data and new_data
             details = entry.get("details", {})
@@ -3751,3 +4256,1372 @@ async def create_account(request: Request):
             content={"error": str(e)},
             status_code=500
         )
+
+# ===================================================================
+# 📄 PAGE ACCESS CONTROL MANAGEMENT  
+# ===================================================================
+
+class PageCreate(BaseModel):
+    name: str
+    path: str
+    icon: Optional[str] = None
+    category: Optional[str] = "Tools"
+    is_external: bool = False
+    url: Optional[str] = None
+    description: Optional[str] = None
+
+class PageUpdate(BaseModel):
+    name: Optional[str] = None
+    path: Optional[str] = None
+    icon: Optional[str] = None
+    category: Optional[str] = None
+    is_external: Optional[bool] = None
+    url: Optional[str] = None
+    description: Optional[str] = None
+
+class PagePermissionUpdate(BaseModel):
+    page_id: int
+    group_ids: list[int]
+
+class PageOrderUpdate(BaseModel):
+    page_id: int
+    display_order: int
+
+class BulkPageOrderUpdate(BaseModel):
+    updates: list[PageOrderUpdate]
+
+# Endpoint to persist page order
+@app.put("/pages/reorder", tags=["pages"])
+async def reorder_pages(order_update: BulkPageOrderUpdate):
+    """Update the display order of multiple pages."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Debug: Check if column exists
+        cursor.execute("SHOW COLUMNS FROM pages LIKE 'display_order'")
+        column_check = cursor.fetchone()
+        print(f"🔍 display_order column check: {column_check}")
+        
+        if not column_check:
+            print("❌ display_order column does NOT exist! Running migration...")
+            try:
+                cursor.execute("ALTER TABLE pages ADD COLUMN display_order INT DEFAULT 0 AFTER description")
+                conn.commit()
+                print("✅ Added display_order column")
+            except Exception as e:
+                print(f"❌ Failed to add column: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Column doesn't exist and migration failed: {str(e)}")
+        
+        for update in order_update.updates:
+            sql = "UPDATE pages SET display_order = %s WHERE id = %s AND is_active = TRUE"
+            params = (update.display_order, update.page_id)
+            print(f"🔍 Executing: {sql} with params {params}")
+            cursor.execute(sql, params)
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"✅ Reordered pages: {[u.page_id for u in order_update.updates]}")
+        return {"message": "Page order updated successfully"}
+    except Exception as e:
+        print(f"❌ Error reordering pages: {str(e)}")
+        if 'conn' in locals() and 'cursor' in locals():
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+# NocoDB table IDs for page management
+PAGES_TABLE_ID = "pages"  # Will be created if doesn't exist
+PAGE_PERMISSIONS_TABLE_ID = "page_permissions"  # Will be created if doesn't exist
+GROUPS_TABLE_ID = "groups"  # Should already exist
+USERS_TABLE_ID = "users"  # Should already exist
+
+def get_nocodb_connection():
+    """Get NocoDB API configuration"""
+    return {
+        "api_token": os.getenv("NOCODB_API_TOKEN"),
+        "base_url": os.getenv("NOCODB_API_URL"),
+        "headers": {
+            "xc-token": os.getenv("NOCODB_API_TOKEN"),
+            "Content-Type": "application/json"
+        }
+    }
+
+@app.post("/pages", tags=["pages"])
+async def create_page(page: PageCreate):
+    """Create a new page for access control"""
+    try:
+        config = get_nocodb_connection()
+        
+        # Create the page record in NocoDB
+        page_data = {
+            "name": page.name,
+            "path": page.path,
+            "icon": page.icon,
+            "category": page.category,
+            "is_external": page.is_external,
+            "url": page.url,
+            "description": page.description
+        }
+        
+        response = requests.post(
+            f"{config['base_url']}/api/v2/tables/{PAGES_TABLE_ID}/records",
+            headers=config["headers"],
+            json=page_data,
+            verify=False
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Failed to create page: {response.text}")
+        
+        result = response.json()
+        page_id = result.get("Id") or result.get("id")
+        
+        print(f"✅ Created page: {page.name} (ID: {page_id})")
+        
+        return {"id": page_id, "message": "Page created successfully"}
+        
+    except requests.RequestException as e:
+        print(f"❌ API error creating page: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error creating page: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/pages", tags=["pages"])
+async def get_pages():
+    """Get all pages with their permissions"""
+    try:
+        config = get_nocodb_connection()
+        
+        # Get all pages
+        response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{PAGES_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"limit": 1000},
+            verify=False
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch pages: {response.text}")
+        
+        pages_data = response.json()
+        pages = pages_data.get("list", [])
+        
+        # For each page, get its permissions (groups that can access it)
+        for page in pages:
+            page_id = page.get("Id") or page.get("id")
+            
+            # Get page permissions
+            perm_response = requests.get(
+                f"{config['base_url']}/api/v2/tables/{PAGE_PERMISSIONS_TABLE_ID}/records",
+                headers=config["headers"],
+                params={"where": f"(page_id,eq,{page_id})", "limit": 100},
+                verify=False
+            )
+            
+            if perm_response.status_code == 200:
+                permissions = perm_response.json().get("list", [])
+                page["group_ids"] = [p.get("group_id") for p in permissions if p.get("group_id")]
+                page["allowed_groups"] = []  # Will be populated with group names in frontend
+            else:
+                page["group_ids"] = []
+                page["allowed_groups"] = []
+        
+        return pages
+        
+    except requests.RequestException as e:
+        print(f"❌ API error fetching pages: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error fetching pages: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/pages/user/{user_email}", tags=["pages"])
+async def get_user_pages(user_email: str):
+    """Get pages accessible by a specific user based on their groups"""
+    try:
+        config = get_nocodb_connection()
+        
+        # First, get the user's groups
+        user_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{USERS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": f"(email,eq,{user_email})", "limit": 1},
+            verify=False
+        )
+        
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        users = user_response.json().get("list", [])
+        if not users:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user = users[0]
+        user_groups = user.get("groups", [])
+        
+        if not user_groups:
+            return []  # No groups, no accessible pages
+        
+        # Get all page permissions for these groups
+        group_filter = " or ".join([f"(group_id,eq,{gid})" for gid in user_groups])
+        perm_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{PAGE_PERMISSIONS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": f"({group_filter})", "limit": 1000},
+            verify=False
+        )
+        
+        if perm_response.status_code != 200:
+            return []
+        
+        permissions = perm_response.json().get("list", [])
+        accessible_page_ids = list(set([p.get("page_id") for p in permissions if p.get("page_id")]))
+        
+        if not accessible_page_ids:
+            return []
+        
+        # Get the actual page details
+        page_filter = " or ".join([f"(Id,eq,{pid})" for pid in accessible_page_ids])
+        pages_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{PAGES_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": f"({page_filter})", "limit": 1000},
+            verify=False
+        )
+        
+        if pages_response.status_code != 200:
+            return []
+        
+        pages = pages_response.json().get("list", [])
+        
+        # Sort by category and name
+        pages.sort(key=lambda x: (x.get("category", ""), x.get("name", "")))
+        
+        return pages
+        
+    except requests.RequestException as e:
+        print(f"❌ API error fetching user pages: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error fetching user pages: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/pages/{page_id}/permissions", tags=["pages"])
+async def update_page_permissions(page_id: int, permission_update: PagePermissionUpdate):
+    """Update which groups can access a specific page - MySQL version"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # First, deactivate existing permissions for this page
+        cursor.execute(
+            "UPDATE page_permissions SET is_active = FALSE WHERE page_id = %s",
+            (page_id,)
+        )
+        
+        # Add new permissions
+        for group_id in permission_update.group_ids:
+            # Check if permission already exists (was deactivated)
+            cursor.execute(
+                "SELECT id FROM page_permissions WHERE page_id = %s AND group_id = %s",
+                (page_id, group_id)
+            )
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Reactivate existing permission
+                cursor.execute(
+                    "UPDATE page_permissions SET is_active = TRUE, permission_level = 'read' WHERE id = %s",
+                    (existing['id'],)
+                )
+            else:
+                # Create new permission
+                cursor.execute(
+                    """INSERT INTO page_permissions (page_id, group_id, permission_level, is_active) 
+                       VALUES (%s, %s, 'read', TRUE)""",
+                    (page_id, group_id)
+                )
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        print(f"✅ Updated permissions for page {page_id}: groups {permission_update.group_ids}")
+        
+        return {"message": "Page permissions updated successfully"}
+        
+    except Exception as e:
+        print(f"❌ Error updating page permissions: {str(e)}")
+        if 'conn' in locals():
+            conn.rollback()
+            cursor.close()
+            conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/pages/{page_id}", tags=["pages"])
+async def update_page(page_id: int, page_update: PageUpdate):
+    """Update a page using MySQL directly"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Build the UPDATE query dynamically based on provided fields
+        update_fields = []
+        values = []
+        
+        if page_update.name is not None:
+            update_fields.append("name = %s")
+            values.append(page_update.name)
+        if page_update.path is not None:
+            update_fields.append("path = %s")
+            values.append(page_update.path)
+        if page_update.icon is not None:
+            update_fields.append("icon = %s")
+            values.append(page_update.icon)
+        if page_update.category is not None:
+            update_fields.append("category = %s")
+            values.append(page_update.category)
+        if page_update.is_external is not None:
+            update_fields.append("is_external = %s")
+            values.append(page_update.is_external)
+        if page_update.url is not None:
+            update_fields.append("url = %s")
+            values.append(page_update.url)
+        if page_update.description is not None:
+            update_fields.append("description = %s")
+            values.append(page_update.description)
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        # Add page_id to values for WHERE clause
+        values.append(page_id)
+        
+        # Execute the update
+        update_query = f"UPDATE pages SET {', '.join(update_fields)} WHERE id = %s AND is_active = TRUE"
+        print(f"🔍 UPDATE query: {update_query}")
+        print(f"🔍 Values: {values}")
+        cursor.execute(update_query, values)
+        print(f"🔍 Rows affected: {cursor.rowcount}")
+        
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            raise HTTPException(status_code=404, detail="Page not found")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        print(f"✅ Updated page {page_id}")
+        return {"message": "Page updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating page: {str(e)}")
+        if 'conn' in locals() and 'cursor' in locals():
+            try:
+                conn.rollback()
+                cursor.close()
+                conn.close()
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/pages/{page_id}", tags=["pages"])
+async def delete_page(page_id: int):
+    """Delete a page and its permissions"""
+    try:
+        config = get_nocodb_connection()
+        
+        # Delete page permissions first
+        perm_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{PAGE_PERMISSIONS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": f"(page_id,eq,{page_id})", "limit": 1000},
+            verify=False
+        )
+        
+        if perm_response.status_code == 200:
+            permissions = perm_response.json().get("list", [])
+            for perm in permissions:
+                perm_id = perm.get("Id") or perm.get("id")
+                requests.delete(
+                    f"{config['base_url']}/api/v2/tables/{PAGE_PERMISSIONS_TABLE_ID}/records/{perm_id}",
+                    headers=config["headers"],
+                    verify=False
+                )
+        
+        # Delete the page
+        delete_response = requests.delete(
+            f"{config['base_url']}/api/v2/tables/{PAGES_TABLE_ID}/records/{page_id}",
+            headers=config["headers"],
+            verify=False
+        )
+        
+        if delete_response.status_code not in [200, 404]:
+            raise HTTPException(status_code=500, detail=f"Failed to delete page: {delete_response.text}")
+        
+        print(f"✅ Deleted page {page_id}")
+        
+        return {"message": "Page deleted successfully"}
+        
+    except requests.RequestException as e:
+        print(f"❌ API error deleting page: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error deleting page: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/pages/initialize", tags=["pages"])
+async def initialize_default_pages():
+    """Initialize default pages and assign them to public group"""
+    try:
+        config = get_nocodb_connection()
+        
+        # First, ensure public group exists
+        public_group_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{GROUPS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": "(name,eq,public)", "limit": 1},
+            verify=False
+        )
+        
+        public_group_id = None
+        if public_group_response.status_code == 200:
+            groups = public_group_response.json().get("list", [])
+            if groups:
+                public_group_id = groups[0].get("Id") or groups[0].get("id")
+        
+        # Create public group if it doesn't exist
+        if not public_group_id:
+            group_data = {
+                "name": "public",
+                "description": "Default group for all users - access to basic pages",
+                "permissions": '{"access_level": "basic"}'
+            }
+            
+            group_response = requests.post(
+                f"{config['base_url']}/api/v2/tables/{GROUPS_TABLE_ID}/records",
+                headers=config["headers"],
+                json=group_data,
+                verify=False
+            )
+            
+            if group_response.status_code == 200:
+                result = group_response.json()
+                public_group_id = result.get("Id") or result.get("id")
+        
+        if not public_group_id:
+            raise HTTPException(status_code=500, detail="Failed to create or find public group")
+        
+        # Define default pages
+        default_pages = [
+            {"name": "Dashboard", "path": "/", "icon": "Home", "category": "Navigation", "is_external": False},
+            {"name": "n8n", "path": "/tools/n8n", "icon": "Workflow", "category": "Tools", "is_external": True, 
+             "url": "https://n8n.edbmotte.com/projects/A35bALSD6kzKLUi6/workflows"},
+            {"name": "nocodb", "path": "/tools/nocodb", "icon": "Database", "category": "Tools", "is_external": True,
+             "url": "https://nocodb.edbmotte.com/dashboard/#/nc/pjqgy4ri85jks06/mmqclkrvx9lbtpc"},
+            {"name": "drive", "path": "/tools/drive", "icon": "HardDrive", "category": "Tools", "is_external": True,
+             "url": "https://drive.google.com/drive/recent"},
+            {"name": "notion", "path": "/tools/notion", "icon": "HardDrive", "category": "Tools", "is_external": True,
+             "url": "https://www.notion.so"}
+        ]
+        
+        created_pages = 0
+        
+        # Create default pages and assign to public group
+        for page_def in default_pages:
+            try:
+                # Check if page already exists
+                existing_response = requests.get(
+                    f"{config['base_url']}/api/v2/tables/{PAGES_TABLE_ID}/records",
+                    headers=config["headers"],
+                    params={"where": f"(path,eq,{page_def['path']})", "limit": 1},
+                    verify=False
+                )
+                
+                page_id = None
+                if existing_response.status_code == 200:
+                    existing_pages = existing_response.json().get("list", [])
+                    if existing_pages:
+                        page_id = existing_pages[0].get("Id") or existing_pages[0].get("id")
+                
+                # Create page if it doesn't exist
+                if not page_id:
+                    page_data = {
+                        "name": page_def["name"],
+                        "path": page_def["path"],
+                        "icon": page_def["icon"],
+                        "category": page_def["category"],
+                        "is_external": page_def["is_external"],
+                        "url": page_def.get("url"),
+                        "description": f"Default {page_def['name']} page"
+                    }
+                    
+                    page_response = requests.post(
+                        f"{config['base_url']}/api/v2/tables/{PAGES_TABLE_ID}/records",
+                        headers=config["headers"],
+                        json=page_data,
+                        verify=False
+                    )
+                    
+                    if page_response.status_code == 200:
+                        result = page_response.json()
+                        page_id = result.get("Id") or result.get("id")
+                        created_pages += 1
+                
+                # Assign page to public group
+                if page_id:
+                    perm_data = {
+                        "page_id": page_id,
+                        "group_id": public_group_id
+                    }
+                    
+                    requests.post(
+                        f"{config['base_url']}/api/v2/tables/{PAGE_PERMISSIONS_TABLE_ID}/records",
+                        headers=config["headers"],
+                        json=perm_data,
+                        verify=False
+                    )
+                
+            except Exception as e:
+                print(f"⚠️ Error creating page {page_def['name']}: {str(e)}")
+                continue
+        
+        print(f"✅ Initialized {created_pages} default pages and assigned to public group (ID: {public_group_id})")
+        
+        return {
+            "message": "Default pages and public group initialized successfully",
+            "public_group_id": public_group_id,
+            "pages_created": created_pages
+        }
+        
+    except requests.RequestException as e:
+        print(f"❌ API error initializing pages: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error initializing pages: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===================================================================
+# 👥 USER MANAGEMENT WITH PUBLIC GROUP AUTO-ASSIGNMENT
+# ===================================================================
+
+USERS_TABLE_ID = "users"  # Should already exist
+USER_GROUPS_TABLE_ID = "user_groups"  # Should already exist
+
+@app.get("/api/users", tags=["users"])
+async def get_all_users():
+    """Get all users with their groups"""
+    try:
+        config = get_nocodb_connection()
+        
+        # Get all users
+        response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{USERS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"limit": 1000},
+            verify=False
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch users: {response.text}")
+        
+        users_data = response.json()
+        users = users_data.get("list", [])
+        
+        return users
+        
+    except requests.RequestException as e:
+        print(f"❌ API error fetching users: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error fetching users: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/groups", tags=["users"])
+async def get_all_groups():
+    """Get all groups"""
+    try:
+        config = get_nocodb_connection()
+        
+        response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{GROUPS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"limit": 1000},
+            verify=False
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch groups: {response.text}")
+        
+        groups_data = response.json()
+        groups = groups_data.get("list", [])
+        
+        return groups
+        
+    except requests.RequestException as e:
+        print(f"❌ API error fetching groups: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error fetching groups: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/users/{user_id}/assign-to-public", tags=["users"])
+async def assign_user_to_public_group(user_id: int):
+    """Assign a user to the public group if not already assigned"""
+    try:
+        config = get_nocodb_connection()
+        
+        # Get public group
+        public_group_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{GROUPS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": "(name,eq,public)", "limit": 1},
+            verify=False
+        )
+        
+        if public_group_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Could not find public group")
+        
+        groups = public_group_response.json().get("list", [])
+        if not groups:
+            raise HTTPException(status_code=500, detail="Public group does not exist")
+        
+        public_group_id = groups[0].get("Id") or groups[0].get("id")
+        
+        # Check if user is already in public group
+        existing_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{USER_GROUPS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": f"(user_id,eq,{user_id}) and (group_id,eq,{public_group_id})", "limit": 1},
+            verify=False
+        )
+        
+        if existing_response.status_code == 200:
+            existing = existing_response.json().get("list", [])
+            if existing:
+                return {"message": "User already in public group"}
+        
+        # Assign user to public group
+        assignment_data = {
+            "user_id": user_id,
+            "group_id": public_group_id,
+            "assigned_by": "system",
+            "assigned_at": datetime.now().isoformat()
+        }
+        
+        assign_response = requests.post(
+            f"{config['base_url']}/api/v2/tables/{USER_GROUPS_TABLE_ID}/records",
+            headers=config["headers"],
+            json=assignment_data,
+            verify=False
+        )
+        
+        if assign_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to assign user to public group")
+        
+        print(f"✅ Assigned user {user_id} to public group")
+        
+        return {"message": "User assigned to public group successfully"}
+        
+    except requests.RequestException as e:
+        print(f"❌ API error assigning user to public group: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error assigning user to public group: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/users/ensure-public-assignments", tags=["users"])
+async def ensure_all_users_in_public_group():
+    """Ensure all users are assigned to the public group"""
+    try:
+        config = get_nocodb_connection()
+        
+        # Get public group
+        public_group_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{GROUPS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": "(name,eq,public)", "limit": 1},
+            verify=False
+        )
+        
+        if public_group_response.status_code != 200:
+            return {"message": "Public group not found, skipping assignment"}
+        
+        groups = public_group_response.json().get("list", [])
+        if not groups:
+            return {"message": "Public group does not exist, skipping assignment"}
+        
+        public_group_id = groups[0].get("Id") or groups[0].get("id")
+        
+        # Get all users
+        users_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{USERS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"limit": 1000},
+            verify=False
+        )
+        
+        if users_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to fetch users")
+        
+        users = users_response.json().get("list", [])
+        assigned_count = 0
+        
+        # Get existing assignments to public group
+        assignments_response = requests.get(
+            f"{config['base_url']}/api/v2/tables/{USER_GROUPS_TABLE_ID}/records",
+            headers=config["headers"],
+            params={"where": f"(group_id,eq,{public_group_id})", "limit": 1000},
+            verify=False
+        )
+        
+        existing_user_ids = set()
+        if assignments_response.status_code == 200:
+            assignments = assignments_response.json().get("list", [])
+            existing_user_ids = set([a.get("user_id") for a in assignments if a.get("user_id")])
+        
+        # Assign users who aren't already in public group
+        for user in users:
+            user_id = user.get("Id") or user.get("id")
+            if user_id and user_id not in existing_user_ids:
+                assignment_data = {
+                    "user_id": user_id,
+                    "group_id": public_group_id,
+                    "assigned_by": "system",
+                    "assigned_at": datetime.now().isoformat()
+                }
+                
+                assign_response = requests.post(
+                    f"{config['base_url']}/api/v2/tables/{USER_GROUPS_TABLE_ID}/records",
+                    headers=config["headers"],
+                    json=assignment_data,
+                    verify=False
+                )
+                
+                if assign_response.status_code == 200:
+                    assigned_count += 1
+        
+        print(f"✅ Assigned {assigned_count} users to public group")
+        
+        return {
+            "message": f"Assigned {assigned_count} users to public group",
+            "total_users": len(users),
+            "newly_assigned": assigned_count
+        }
+        
+    except requests.RequestException as e:
+        print(f"❌ API error ensuring public assignments: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error ensuring public assignments: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===================================================================
+# 🔧 QUICK FIX: MANUAL USER GROUP ASSIGNMENT
+# ===================================================================
+
+@app.put("/users/{user_id}/group", tags=["User Management"])
+def assign_user_to_group_manual(user_id: int, group_id: int, current_user: dict = Depends(get_current_user)):
+    """Manually assign a user to a specific group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Update user's group_id
+        cursor.execute("UPDATE users SET group_id = %s WHERE id = %s", (group_id, user_id))
+        
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        print(f"✅ Assigned user {user_id} to group {group_id}")
+        
+        return {"message": f"User {user_id} assigned to group {group_id} successfully"}
+        
+    except Exception as e:
+        print(f"❌ Error assigning user to group: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/assign-scale42-users", tags=["User Management"])
+def assign_scale42_users(current_user: dict = Depends(get_current_user)):
+    """Assign all scale-42.com domain users to Scale42 group using the groups array field"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Get all scale-42.com users
+        cursor.execute("SELECT id, email, groups FROM users WHERE email LIKE '%@scale-42.com'")
+        scale42_users = cursor.fetchall()
+        
+        updated_count = 0
+        
+        for user in scale42_users:
+            user_id = user['id']
+            current_groups = user.get('groups', [])
+            
+            # Convert to list if it's a string (JSON stored as string)
+            if isinstance(current_groups, str):
+                try:
+                    import json
+                    current_groups = json.loads(current_groups) if current_groups else []
+                except:
+                    current_groups = []
+            elif current_groups is None:
+                current_groups = []
+            
+            # Add Scale42 to groups if not already present
+            if 'Scale42' not in current_groups:
+                current_groups.append('Scale42')
+                
+                # Update the user's groups field
+                import json
+                groups_json = json.dumps(current_groups)
+                cursor.execute("UPDATE users SET groups = %s WHERE id = %s", (groups_json, user_id))
+                updated_count += 1
+                print(f"✅ Assigned user {user['email']} (ID: {user_id}) to Scale42 group")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "message": f"Assigned {updated_count} Scale-42 users to Scale42 group",
+            "updated_users": updated_count,
+            "total_scale42_users": len(scale42_users)
+        }
+        
+    except Exception as e:
+        print(f"❌ Error assigning Scale-42 users: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/assign-user-to-scale42/{user_email}", tags=["User Management"])
+def assign_specific_user_to_scale42(user_email: str, current_user: dict = Depends(get_current_user)):
+    """Assign a specific user to Scale42 group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Get the user
+        cursor.execute("SELECT id, email, groups FROM users WHERE email = %s", (user_email,))
+        user = cursor.fetchone()
+        
+        if not user:
+            cursor.close()
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_id = user['id']
+        current_groups = user.get('groups', [])
+        
+        # Convert to list if it's a string (JSON stored as string)
+        if isinstance(current_groups, str):
+            try:
+                import json
+                current_groups = json.loads(current_groups) if current_groups else []
+            except:
+                current_groups = []
+        elif current_groups is None:
+            current_groups = []
+        
+        # Add Scale42 to groups if not already present
+        if 'Scale42' not in current_groups:
+            current_groups.append('Scale42')
+            
+            # Update the user's groups field
+            import json
+            groups_json = json.dumps(current_groups)
+            cursor.execute("UPDATE users SET groups = %s WHERE id = %s", (groups_json, user_id))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            print(f"✅ Assigned user {user_email} (ID: {user_id}) to Scale42 group")
+            
+            return {
+                "message": f"User {user_email} assigned to Scale42 group successfully",
+                "user_id": user_id,
+                "new_groups": current_groups
+            }
+        else:
+            cursor.close()
+            conn.close()
+            return {
+                "message": f"User {user_email} already in Scale42 group",
+                "user_id": user_id,
+                "current_groups": current_groups
+            }
+        
+    except Exception as e:
+        print(f"❌ Error assigning user {user_email} to Scale42: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fix-scale42-users", tags=["User Management"])
+def fix_scale42_users(current_user: dict = Depends(get_current_user)):
+    """Fix all scale-42.com users to be assigned to Scale42 group"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Get Scale42 group ID
+        cursor.execute("SELECT id FROM groups WHERE name = 'Scale42'")
+        scale42_group = cursor.fetchone()
+        
+        if not scale42_group:
+            cursor.close()
+            conn.close()
+            raise HTTPException(status_code=404, detail="Scale42 group not found")
+        
+        scale42_group_id = scale42_group[0]  # Access by index for MySQL cursor
+        
+        # Update all scale-42.com users to Scale42 group
+        cursor.execute("""
+            UPDATE users 
+            SET group_id = %s 
+            WHERE email LIKE %s 
+            AND (group_id IS NULL OR group_id != %s)
+        """, (scale42_group_id, '%@scale-42.com', scale42_group_id))
+        
+        updated_count = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        print(f"✅ Fixed {updated_count} Scale-42 users")
+        
+        return {
+            "message": f"Fixed {updated_count} Scale-42 users",
+            "scale42_group_id": scale42_group_id,
+            "updated_users": updated_count
+        }
+        
+    except Exception as e:
+        print(f"❌ Error fixing Scale-42 users: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api-assign-user-to-scale42/{email}")
+def api_assign_user_to_scale42(email: str):
+    """Assign a user to Scale42 group using user_groups table - quick fix endpoint"""
+    try:
+        # Verify user has scale-42.com domain
+        if not email.endswith('@scale-42.com'):
+            return {"error": f"User {email} must have scale-42.com domain"}
+            
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Get the user
+        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+        user_result = cursor.fetchone()
+        
+        if not user_result:
+            cursor.close()
+            conn.close()
+            return {"error": f"User {email} not found"}
+        
+        user_id = user_result['id']
+        
+        # Get Scale42 group ID
+        cursor.execute("SELECT id FROM groups WHERE name = 'Scale42' AND is_active = TRUE")
+        group_result = cursor.fetchone()
+        
+        if not group_result:
+            cursor.close()
+            conn.close()
+            return {"error": "Scale42 group not found"}
+        
+        scale42_group_id = group_result['id']
+        
+        # Check if user is already in Scale42 group
+        cursor.execute("""
+            SELECT id FROM user_groups 
+            WHERE user_id = %s AND group_id = %s AND is_active = TRUE
+        """, (user_id, scale42_group_id))
+        existing_assignment = cursor.fetchone()
+        
+        if existing_assignment:
+            cursor.close()
+            conn.close()
+            return {
+                "status": "already_assigned",
+                "message": f"{email} already in Scale42 group",
+                "user_id": user_id,
+                "group_id": scale42_group_id
+            }
+        
+        # Insert new user-group assignment
+        cursor.execute("""
+            INSERT INTO user_groups (user_id, group_id, role, is_active) 
+            VALUES (%s, %s, 'member', TRUE)
+        """, (user_id, scale42_group_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "status": "success",
+            "message": f"Added {email} to Scale42 group",
+            "user_id": user_id,
+            "scale42_group_id": scale42_group_id
+        }
+            
+    except Exception as e:
+        return {"error": f"Failed to assign user to Scale42 group: {str(e)}"}
+
+@app.post("/migrate-display-order", tags=["pages"])
+def migrate_display_order():
+    """Add display_order column to pages table if it doesn't exist"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Add display_order column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE pages ADD COLUMN display_order INT DEFAULT 0 AFTER description")
+            conn.commit()
+            message = "✅ Added display_order column to pages table"
+        except Exception as e:
+            if "Duplicate column name" in str(e):
+                message = "✅ display_order column already exists"
+            else:
+                raise e
+        
+        # Add index for display_order if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE pages ADD INDEX idx_display_order (display_order)")
+            conn.commit()
+            message += " and index"
+        except Exception as e:
+            if "Duplicate key name" not in str(e):
+                message += f" (index warning: {str(e)})"
+        
+        cursor.close()
+        conn.close()
+        
+        print(message)
+        return {"status": "success", "message": message}
+        
+    except Exception as e:
+        print(f"❌ Error migrating display_order: {str(e)}")
+        if 'conn' in locals() and 'cursor' in locals():
+            try:
+                cursor.close()
+                conn.close()
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/setup-original-pages", tags=["pages"])
+def setup_original_pages():
+    """Set up the original pages using MySQL directly"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Create pages table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pages (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                path VARCHAR(255) NOT NULL UNIQUE,
+                icon VARCHAR(100) DEFAULT 'Globe',
+                category VARCHAR(100) DEFAULT 'Other',
+                is_external BOOLEAN DEFAULT FALSE,
+                url TEXT,
+                description TEXT,
+                display_order INT DEFAULT 0,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_path (path),
+                INDEX idx_category (category),
+                INDEX idx_active (is_active),
+                INDEX idx_display_order (display_order)
+            )
+        """)
+        
+        # Add display_order column if it doesn't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE pages ADD COLUMN display_order INT DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
+        
+        # Add index for display_order if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE pages ADD INDEX idx_display_order (display_order)")
+        except Exception:
+            pass  # Index already exists
+        
+        # Create page_permissions table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS page_permissions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                page_id INT NOT NULL,
+                group_id INT NOT NULL,
+                permission_level VARCHAR(50) DEFAULT 'read',
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                granted_by INT,
+                is_active BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL,
+                UNIQUE KEY unique_page_group (page_id, group_id),
+                INDEX idx_page_id (page_id),
+                INDEX idx_group_id (group_id),
+                INDEX idx_active (is_active)
+            )
+        """)
+        
+        # Define original pages
+        original_pages = [
+            ("Dashboard", "/dashboard", "Home", "Navigation", False, None, "Main dashboard"),
+            ("Projects", "/projects", "FolderOpen", "Projects", False, None, "Project management"),
+            ("Schema", "/schema", "Database", "Projects", False, None, "Database schema"),
+            ("Map", "/map", "Map", "Projects", False, None, "Project map view"),
+            ("Hoyanger", "/hoyanger", "Building", "Projects", False, None, "Hoyanger specific page"),
+            ("Accounts", "/accounts", "CreditCard", "Financial", False, None, "Account management"),
+            ("NocoDb", "/tools/nocodb", "Database", "Tools", False, None, "NocoDb admin"),
+            ("N8N", "/tools/n8n", "Workflow", "Tools", False, None, "N8N automation"),
+            ("Drive", "/tools/drive", "HardDrive", "Tools", False, None, "File storage"),
+            ("Debug", "/debug", "Zap", "Development", False, None, "Debug tools"),
+        ]
+        
+        # Get Public group ID (we created this earlier)
+        cursor.execute("SELECT id FROM groups WHERE name = 'Public' AND is_active = TRUE")
+        public_group = cursor.fetchone()
+        if not public_group:
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            return {"error": "Public group not found"}
+        
+        public_group_id = public_group['id']
+        
+        # Get Scale42 group ID
+        cursor.execute("SELECT id FROM groups WHERE name = 'Scale42' AND is_active = TRUE")
+        scale42_group = cursor.fetchone()
+        scale42_group_id = scale42_group['id'] if scale42_group else None
+        
+        # Insert pages
+        added_pages = []
+        for page_data in original_pages:
+            name, path, icon, category, is_external, url, description = page_data
+            
+            # Check if page already exists
+            cursor.execute("SELECT id FROM pages WHERE path = %s", (path,))
+            existing = cursor.fetchone()
+            
+            if not existing:
+                cursor.execute("""
+                    INSERT INTO pages (name, path, icon, category, is_external, url, description)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (name, path, icon, category, is_external, url, description))
+                
+                page_id = cursor.lastrowid
+                
+                # Give Public group access to basic pages
+                if category in ['Navigation', 'Projects', 'Tools']:
+                    cursor.execute("""
+                        INSERT INTO page_permissions (page_id, group_id, permission_level)
+                        VALUES (%s, %s, 'read')
+                    """, (page_id, public_group_id))
+                
+                # Give Scale42 group access to all pages
+                if scale42_group_id:
+                    cursor.execute("""
+                        INSERT INTO page_permissions (page_id, group_id, permission_level)
+                        VALUES (%s, %s, 'admin')
+                    """, (page_id, scale42_group_id))
+                
+                added_pages.append(name)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "status": "success",
+            "message": f"Set up {len(added_pages)} original pages",
+            "pages_added": added_pages,
+            "public_group_id": public_group_id,
+            "scale42_group_id": scale42_group_id
+        }
+        
+    except Exception as e:
+        return {"error": f"Failed to set up original pages: {str(e)}"}
+
+@app.get("/pages-mysql", tags=["pages"])
+def get_pages_mysql():
+    """Get all pages using MySQL directly"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT p.*, 
+                   GROUP_CONCAT(
+                       CONCAT(g.name, ':', pp.permission_level) 
+                       ORDER BY g.name SEPARATOR '; '
+                   ) as permissions
+            FROM pages p
+            LEFT JOIN page_permissions pp ON p.id = pp.page_id AND pp.is_active = TRUE
+            LEFT JOIN groups g ON pp.group_id = g.id AND g.is_active = TRUE
+            WHERE p.is_active = TRUE
+            GROUP BY p.id
+            ORDER BY p.display_order, p.category, p.name
+        """)
+        
+        pages = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return pages
+        
+    except Exception as e:
+        return {"error": f"Failed to fetch pages: {str(e)}"}
+
+@app.get("/pages/user-mysql/{email}")
+def get_user_pages_mysql(email: str):
+    """Get pages accessible to a user using MySQL directly"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Get user's assigned groups (if user exists)
+        cursor.execute("""
+            SELECT DISTINCT g.id, g.name
+            FROM users u
+            JOIN user_groups ug ON u.id = ug.user_id AND ug.is_active = TRUE
+            JOIN groups g ON ug.group_id = g.id AND g.is_active = TRUE
+            WHERE u.email = %s AND u.is_active = TRUE
+        """, (email,))
+        
+        user_groups = cursor.fetchall()
+        
+        # Always include Public group for all authenticated users (whether they exist in DB or not)
+        cursor.execute("SELECT id, name FROM groups WHERE name = 'Public' AND is_active = TRUE")
+        public_group = cursor.fetchone()
+        
+        # Collect all group IDs (user's assigned groups + Public group)
+        group_ids = [str(group['id']) for group in user_groups]
+        if public_group and str(public_group['id']) not in group_ids:  # type: ignore
+            group_ids.append(str(public_group['id']))  # type: ignore
+        
+        if not group_ids:
+            cursor.close()
+            conn.close()
+            return []
+        
+        placeholders = ','.join(['%s'] * len(group_ids))
+        
+        # Get pages accessible to user's groups (including Public)
+        cursor.execute(f"""
+            SELECT DISTINCT p.*
+            FROM pages p
+            JOIN page_permissions pp ON p.id = pp.page_id AND pp.is_active = TRUE
+            WHERE pp.group_id IN ({placeholders}) AND p.is_active = TRUE
+            ORDER BY p.display_order, p.category, p.name
+        """, group_ids)
+        
+        pages = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        return pages
+        
+    except Exception as e:
+        return {"error": f"Failed to fetch user pages: {str(e)}"}
+
+@app.post("/add-single-page", tags=["pages"])
+def add_single_page(page_data: dict):
+    """Add a single page with permissions"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Extract page data
+        name = page_data.get('name')
+        path = page_data.get('path')
+        icon = page_data.get('icon', 'Globe')
+        category = page_data.get('category', 'Other')
+        is_external = page_data.get('is_external', False)
+        url = page_data.get('url')
+        description = page_data.get('description')
+        
+        if not name or not path:
+            return {"error": "Name and path are required"}
+        
+        # Check if page already exists
+        cursor.execute("SELECT id FROM pages WHERE path = %s", (path,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            cursor.close()
+            conn.close()
+            return {"error": f"Page with path {path} already exists"}
+        
+        # Insert the page
+        cursor.execute("""
+            INSERT INTO pages (name, path, icon, category, is_external, url, description)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (name, path, icon, category, is_external, url, description))
+        
+        page_id = cursor.lastrowid
+        
+        # Get Scale42 group ID for permissions
+        cursor.execute("SELECT id FROM groups WHERE name = 'Scale42' AND is_active = TRUE")
+        scale42_result = cursor.fetchone()
+        
+        if scale42_result:
+            # Access the id field directly (MySQL cursor returns dict-like objects)
+            scale42_group_id = scale42_result['id'] if 'id' in scale42_result else None
+            
+            if scale42_group_id:
+                cursor.execute("""
+                    INSERT INTO page_permissions (page_id, group_id, permission_level)
+                    VALUES (%s, %s, 'admin')
+                """, (page_id, scale42_group_id))
+        
+        # For Management category, only give access to Scale42 group
+        # For other categories, also give Public group read access
+        if category not in ['Management']:
+            cursor.execute("SELECT id FROM groups WHERE name = 'Public' AND is_active = TRUE")
+            public_result = cursor.fetchone()
+            
+            if public_result:
+                public_group_id = public_result['id'] if 'id' in public_result else None
+                
+                if public_group_id:
+                    cursor.execute("""
+                        INSERT INTO page_permissions (page_id, group_id, permission_level)
+                        VALUES (%s, %s, 'read')
+                    """, (page_id, public_group_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return {
+            "status": "success",
+            "message": f"Page '{name}' added successfully",
+            "page_id": page_id,
+            "path": path
+        }
+        
+    except Exception as e:
+        return {"error": f"Failed to add page: {str(e)}"}

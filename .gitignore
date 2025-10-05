@@ -17,5 +17,8 @@ Thumbs.db
 .next/
 dist/
 
+# Tests (temporary scripts)
+tests/
+
 # Misc
 *.swp
