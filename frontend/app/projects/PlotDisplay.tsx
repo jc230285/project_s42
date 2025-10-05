@@ -258,6 +258,7 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
       
       if (response.ok) {
         const data = await response.json();
+        console.log('Audit data received:', data);
         // Filter audit records by field ID from the details JSON
         const fieldRecords = data.audit_trail?.filter((record: any) => {
           if (!record.details) return false;
@@ -270,12 +271,16 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
             return false;
           }
         }) || [];
+        console.log(`Filtered ${fieldRecords.length} records for field ${field["Field Name"]}`);
         setFieldAuditRecords(fieldRecords);
       } else {
-        console.error('Failed to load field history');
+        const errorText = await response.text();
+        console.error('Failed to load field history:', response.status, errorText);
+        toast.error('Failed to load field history');
       }
     } catch (error) {
       console.error('Error loading field history:', error);
+      toast.error('Failed to load field history');
     } finally {
       setFieldHistoryLoading(false);
     }
@@ -284,9 +289,7 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
   const handleShowHistory = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowFieldHistory(true);
-    if (fieldAuditRecords.length === 0) {
-      loadFieldHistory();
-    }
+    loadFieldHistory(); // Always reload to ensure fresh data
   };
 
   const coords = parseCoordinates(displayValue);
@@ -519,7 +522,7 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
 
       {showFieldHistory && (
         <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={() => setShowFieldHistory(false)}>
-          <div className="w-96 bg-background border-l border-border h-full overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="w-96 bg-background border-l border-border h-full overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
               <h3 className="font-semibold">Field History: {field["Field Name"]}</h3>
               <button onClick={() => setShowFieldHistory(false)} className="text-muted-foreground hover:text-foreground">
@@ -877,7 +880,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
       {showFieldHistory && (
         <div className="fixed inset-0 z-50" onClick={() => setShowFieldHistory(false)}>
           <div 
-            className="absolute top-0 right-0 h-full w-96 bg-background border-l border-border shadow-2xl overflow-y-auto"
+            className="absolute top-0 right-0 h-full w-96 bg-background border-l border-border shadow-2xl overflow-y-auto custom-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between z-10">
@@ -1311,7 +1314,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
       {showFieldHistory && (
         <div className="fixed inset-0 z-50" onClick={() => setShowFieldHistory(false)}>
           <div 
-            className="absolute top-0 right-0 h-full w-96 bg-background border-l border-border shadow-2xl overflow-y-auto"
+            className="absolute top-0 right-0 h-full w-96 bg-background border-l border-border shadow-2xl overflow-y-auto custom-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between z-10">
@@ -2085,7 +2088,7 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
       
       {showFieldHistory && (
         <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={() => setShowFieldHistory(false)}>
-          <div className="w-96 bg-background border-l border-border h-full overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="w-96 bg-background border-l border-border h-full overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
               <h3 className="font-semibold">Field History: {field["Field Name"]}</h3>
               <button onClick={() => setShowFieldHistory(false)} className="text-muted-foreground hover:text-foreground">
@@ -2479,7 +2482,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
               </button>
             </div>
 
-            <div className="flex-1 p-4 bg-gray-900 dark:bg-gray-800 overflow-y-auto">
+            <div className="flex-1 p-4 bg-gray-900 dark:bg-gray-800 overflow-y-auto custom-scrollbar">
               {options.length > 0 ? (
                 <div className="space-y-2">
                   {options.map((option, index) => (
@@ -3055,7 +3058,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                 <p className="text-xs">No activity found</p>
               </div>
             ) : (
-              <div className="space-y-2 h-[300px] overflow-y-auto">
+              <div className="space-y-2 h-[300px] overflow-y-auto custom-scrollbar">
                 {timelineItems.map((item) => (
               <div key={`${item.type}-${item.data.id}`} className="bg-background/60 rounded p-1 border border-border/10">
                 <div className="flex items-start gap-2">
