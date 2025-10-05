@@ -246,15 +246,30 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
         image: session.user.image || ""
       };
       const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
-      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
-      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
-        headers: { 'Authorization': authHeader },
+      
+      // Use the backend audit endpoint
+      const tablePath = tableName === "Projects" ? "projects" : "plots";
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/${tablePath}/${recordId}`, {
+        headers: { 
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
       });
+      
       if (response.ok) {
         const data = await response.json();
-        const fieldRecords = data.audit_trail?.filter((record: any) => 
-          record.fk_column_id === field["Field ID"]
-        ) || [];
+        // Filter audit records by field ID from the details JSON
+        const fieldRecords = data.audit_trail?.filter((record: any) => {
+          if (!record.details) return false;
+          try {
+            const details = JSON.parse(record.details);
+            const columnMeta = details.column_meta || {};
+            // Check if any field in column_meta matches our field ID
+            return Object.values(columnMeta).some((meta: any) => meta?.id === field["Field ID"]);
+          } catch (e) {
+            return false;
+          }
+        }) || [];
         setFieldAuditRecords(fieldRecords);
       } else {
         console.error('Failed to load field history');
@@ -676,20 +691,30 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
         image: session.user.image || ""
       };
       const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
-      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
-
-      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+      
+      // Use the backend audit endpoint
+      const tablePath = tableName === "Projects" ? "projects" : "plots";
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/${tablePath}/${recordId}`, {
         headers: {
           'Authorization': authHeader,
+          'Content-Type': 'application/json'
         },
       });
 
       if (response.ok) {
         const data = await response.json();
-        // Filter audit records for this specific field
-        const fieldRecords = data.audit_trail?.filter((record: any) => 
-          record.fk_column_id === field["Field ID"]
-        ) || [];
+        // Filter audit records by field ID from the details JSON
+        const fieldRecords = data.audit_trail?.filter((record: any) => {
+          if (!record.details) return false;
+          try {
+            const details = JSON.parse(record.details);
+            const columnMeta = details.column_meta || {};
+            // Check if any field in column_meta matches our field ID
+            return Object.values(columnMeta).some((meta: any) => meta?.id === field["Field ID"]);
+          } catch (e) {
+            return false;
+          }
+        }) || [];
         setFieldAuditRecords(fieldRecords);
       } else {
         console.error('Failed to load field history');
@@ -1049,19 +1074,30 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
         image: session.user.image || ""
       };
       const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
-      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
-
-      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
+      
+      // Use the backend audit endpoint
+      const tablePath = tableName === "Projects" ? "projects" : "plots";
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/${tablePath}/${recordId}`, {
         headers: {
           'Authorization': authHeader,
+          'Content-Type': 'application/json'
         },
       });
 
       if (response.ok) {
         const data = await response.json();
-        const fieldRecords = data.audit_trail?.filter((record: any) => 
-          record.fk_column_id === field["Field ID"]
-        ) || [];
+        // Filter audit records by field ID from the details JSON
+        const fieldRecords = data.audit_trail?.filter((record: any) => {
+          if (!record.details) return false;
+          try {
+            const details = JSON.parse(record.details);
+            const columnMeta = details.column_meta || {};
+            // Check if any field in column_meta matches our field ID
+            return Object.values(columnMeta).some((meta: any) => meta?.id === field["Field ID"]);
+          } catch (e) {
+            return false;
+          }
+        }) || [];
         setFieldAuditRecords(fieldRecords);
       } else {
         console.error('Failed to load field history');
@@ -1470,15 +1506,30 @@ const GenericField: React.FC<GenericFieldProps> = ({
         image: session.user.image || ""
       };
       const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
-      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
-      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
-        headers: { 'Authorization': authHeader },
+      
+      // Use the backend audit endpoint
+      const tablePath = tableName === "Projects" ? "projects" : "plots";
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/${tablePath}/${recordId}`, {
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
       });
+      
       if (response.ok) {
         const data = await response.json();
-        const fieldRecords = data.audit_trail?.filter((record: any) => 
-          record.fk_column_id === field["Field ID"]
-        ) || [];
+        // Filter audit records by field ID from the details JSON
+        const fieldRecords = data.audit_trail?.filter((record: any) => {
+          if (!record.details) return false;
+          try {
+            const details = JSON.parse(record.details);
+            const columnMeta = details.column_meta || {};
+            // Check if any field in column_meta matches our field ID
+            return Object.values(columnMeta).some((meta: any) => meta?.id === field["Field ID"]);
+          } catch (e) {
+            return false;
+          }
+        }) || [];
         setFieldAuditRecords(fieldRecords);
       }
     } catch (error) {
@@ -1864,15 +1915,30 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
         image: session.user.image || ""
       };
       const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
-      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
-      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
-        headers: { 'Authorization': authHeader },
+      
+      // Use the backend audit endpoint
+      const tablePath = tableName === "Projects" ? "projects" : "plots";
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/${tablePath}/${recordId}`, {
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
       });
+      
       if (response.ok) {
         const data = await response.json();
-        const fieldRecords = data.audit_trail?.filter((record: any) => 
-          record.fk_column_id === field["Field ID"]
-        ) || [];
+        // Filter audit records by field ID from the details JSON
+        const fieldRecords = data.audit_trail?.filter((record: any) => {
+          if (!record.details) return false;
+          try {
+            const details = JSON.parse(record.details);
+            const columnMeta = details.column_meta || {};
+            // Check if any field in column_meta matches our field ID
+            return Object.values(columnMeta).some((meta: any) => meta?.id === field["Field ID"]);
+          } catch (e) {
+            return false;
+          }
+        }) || [];
         setFieldAuditRecords(fieldRecords);
       }
     } catch (error) {
@@ -2244,15 +2310,30 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
         image: session.user.image || ""
       };
       const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
-      const tableId = tableName === "Projects" ? "mftsk8hkw23m8q1" : "mmqclkrvx9lbtpc";
-      const response = await fetch(`/api/proxy/nocodb?path=api/v2/tables/${tableId}/audits?row_id=${recordId}`, {
-        headers: { 'Authorization': authHeader },
+      
+      // Use the backend audit endpoint
+      const tablePath = tableName === "Projects" ? "projects" : "plots";
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/audit/${tablePath}/${recordId}`, {
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
       });
+      
       if (response.ok) {
         const data = await response.json();
-        const fieldRecords = data.audit_trail?.filter((record: any) => 
-          record.fk_column_id === field["Field ID"]
-        ) || [];
+        // Filter audit records by field ID from the details JSON
+        const fieldRecords = data.audit_trail?.filter((record: any) => {
+          if (!record.details) return false;
+          try {
+            const details = JSON.parse(record.details);
+            const columnMeta = details.column_meta || {};
+            // Check if any field in column_meta matches our field ID
+            return Object.values(columnMeta).some((meta: any) => meta?.id === field["Field ID"]);
+          } catch (e) {
+            return false;
+          }
+        }) || [];
         setFieldAuditRecords(fieldRecords);
       }
     } catch (error) {
