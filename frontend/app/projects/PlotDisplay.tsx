@@ -537,21 +537,48 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
               ) : fieldAuditRecords.length === 0 ? (
                 <div className="text-center text-muted-foreground">No history available</div>
               ) : (
-                <div className="space-y-3">
-                  {fieldAuditRecords.map((record, idx) => (
-                    <div key={idx} className="border border-border rounded p-3 text-sm">
-                      <div className="font-medium text-primary">{record.user_name || record.user}</div>
-                      <div className="text-xs text-muted-foreground">{new Date(record.created_at).toLocaleString()}</div>
-                      <div className="mt-2 space-y-1">
-                        {record.previous_value !== undefined && (
-                          <div><span className="font-semibold">From:</span> {record.previous_value || '(empty)'}</div>
-                        )}
-                        {record.value !== undefined && (
-                          <div><span className="font-semibold">To:</span> {record.value || '(empty)'}</div>
-                        )}
+                <div className="space-y-2">
+                  {fieldAuditRecords.map((record, idx) => {
+                    const details = record.details ? JSON.parse(record.details) : {};
+                    const columnMeta = details.column_meta || {};
+                    const fieldName = field["Field Name"];
+                    const oldValue = details.old_values?.[fieldName];
+                    const newValue = details.new_values?.[fieldName];
+                    
+                    return (
+                      <div key={idx} className="bg-background/60 rounded p-2 border border-border/10">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="p-1 rounded bg-green-100 dark:bg-green-900/30">
+                            <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                          </div>
+                          <span className="text-xs font-medium text-foreground">
+                            {record.user_name || record.user_email || 'System'}
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {(() => {
+                              const date = new Date(record.timestamp || record.created_at);
+                              const day = String(date.getDate()).padStart(2, '0');
+                              const month = String(date.getMonth() + 1).padStart(2, '0');
+                              const year = date.getFullYear();
+                              return `${day}/${month}/${year}`;
+                            })()}
+                          </span>
+                        </div>
+                        <div className="ml-1 text-xs">
+                          {oldValue !== undefined && newValue !== undefined ? (
+                            <>
+                              <div className="text-muted-foreground"><span className="font-semibold">From:</span> {String(oldValue) || '(empty)'}</div>
+                              <div className="text-foreground"><span className="font-semibold">To:</span> {String(newValue) || '(empty)'}</div>
+                            </>
+                          ) : newValue !== undefined ? (
+                            <div className="text-foreground"><span className="font-semibold">Set to:</span> {String(newValue) || '(empty)'}</div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1774,6 +1801,57 @@ const GenericField: React.FC<GenericFieldProps> = ({
               >
                 {isSaving ? 'Saving...' : 'Save'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Field History Modal */}
+      {showFieldHistory && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={() => setShowFieldHistory(false)}>
+          <div className="w-96 bg-background border-l border-border h-full overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
+              <h3 className="font-semibold">Field History: {field["Field Name"]}</h3>
+              <button onClick={() => setShowFieldHistory(false)} className="text-muted-foreground hover:text-foreground">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              {fieldHistoryLoading ? (
+                <div className="text-center text-muted-foreground">Loading history...</div>
+              ) : fieldAuditRecords.length === 0 ? (
+                <div className="text-center text-muted-foreground">No history available</div>
+              ) : (
+                <div className="space-y-3">
+                  {fieldAuditRecords.map((record, idx) => {
+                    const details = record.details ? JSON.parse(record.details) : {};
+                    const columnMeta = details.column_meta || {};
+                    const fieldName = field["Field Name"];
+                    const fieldMeta = columnMeta[fieldName] || {};
+                    
+                    return (
+                      <div key={idx} className="border border-border rounded p-3 text-sm">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="font-medium text-primary">{record.user_name || record.user_email}</div>
+                          <div className="text-xs text-muted-foreground ml-auto">
+                            {new Date(record.timestamp || record.created_at).toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {details.old_values && details.old_values[fieldName] !== undefined && (
+                            <div><span className="font-semibold">From:</span> {String(details.old_values[fieldName]) || '(empty)'}</div>
+                          )}
+                          {details.new_values && details.new_values[fieldName] !== undefined && (
+                            <div><span className="font-semibold">To:</span> {String(details.new_values[fieldName]) || '(empty)'}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
