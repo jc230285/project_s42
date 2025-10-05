@@ -278,6 +278,15 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
   const googleMapsUrl = coords 
     ? `https://www.google.com/maps?q=${coords.lat},${coords.lng}`
     : null;
+  const openInfraMapUrl = coords
+    ? `https://openinframap.org/#14/${coords.lat}/${coords.lng}`
+    : null;
+  const arcGisUrl = coords
+    ? `https://www.arcgis.com/apps/mapviewer/index.html?center=${coords.lng},${coords.lat}&level=14`
+    : null;
+  const googleEarthUrl = coords
+    ? `https://earth.google.com/web/@${coords.lat},${coords.lng},0a,1000d,35y,0h,0t,0r`
+    : null;
 
   return (
     <>
@@ -291,7 +300,7 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
           <div className="flex items-center gap-2">
             <span className="group relative cursor-help">
               {field["Field Name"]}
-              <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
                 <div>
                   <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
                 </div>
@@ -311,7 +320,7 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
                 <svg className="w-3 h-3 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
                 </svg>
-                <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
                   <div><span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span></div>
                   <div><span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span></div>
                   {field.Description && (
@@ -328,7 +337,7 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20" />
                   <circle cx="12" cy="10" r="2" fill="currentColor" />
                 </svg>
-                <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
                   <div><span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span></div>
                   <div><span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span></div>
                   {field.Description && (
@@ -381,6 +390,48 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
                   </svg>
                 </a>
               )}
+              {openInfraMapUrl && (
+                <a
+                  href={openInfraMapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-yellow-500 hover:bg-yellow-600 transition-colors flex-shrink-0"
+                  title="Open in OpenInfraMap"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z"/>
+                  </svg>
+                </a>
+              )}
+              {arcGisUrl && (
+                <a
+                  href={arcGisUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-green-500 hover:bg-green-600 transition-colors flex-shrink-0"
+                  title="Open in ArcGIS"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                </a>
+              )}
+              {googleEarthUrl && (
+                <a
+                  href={googleEarthUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-purple-500 hover:bg-purple-600 transition-colors flex-shrink-0"
+                  title="Open in Google Earth"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-9h2.5L12 7.5 14.5 11H17l-5 7-5-7z"/>
+                  </svg>
+                </a>
+              )}
             </div>
           ) : (
             <div 
@@ -401,6 +452,48 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
                 >
                   <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                  </svg>
+                </a>
+              )}
+              {openInfraMapUrl && (
+                <a
+                  href={openInfraMapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-yellow-500 hover:bg-yellow-600 transition-colors flex-shrink-0"
+                  title="Open in OpenInfraMap"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z"/>
+                  </svg>
+                </a>
+              )}
+              {arcGisUrl && (
+                <a
+                  href={arcGisUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-green-500 hover:bg-green-600 transition-colors flex-shrink-0"
+                  title="Open in ArcGIS"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                </a>
+              )}
+              {googleEarthUrl && (
+                <a
+                  href={googleEarthUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-1.5 rounded bg-purple-500 hover:bg-purple-600 transition-colors flex-shrink-0"
+                  title="Open in Google Earth"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5-9h2.5L12 7.5 14.5 11H17l-5 7-5-7z"/>
                   </svg>
                 </a>
               )}
@@ -627,7 +720,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
         <div className="flex items-center gap-1">
           <span className="group relative cursor-help">
             {field["Field Name"]}
-            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+            <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -660,7 +753,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
                 d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
               ></path>
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -695,7 +788,7 @@ const SingleLineTextField: React.FC<SingleLineTextFieldProps> = ({
               />
               <circle cx="12" cy="10" r="2" fill="currentColor" />
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -1010,7 +1103,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
           <div className="flex items-center gap-2">
             <span className="group relative cursor-help">
               {field["Field Name"]}
-              <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
                 <div>
                   <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
                 </div>
@@ -1043,7 +1136,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
                 d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
               ></path>
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -1077,7 +1170,7 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
               />
               <circle cx="12" cy="10" r="2" fill="currentColor" />
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -1463,7 +1556,7 @@ const GenericField: React.FC<GenericFieldProps> = ({
         <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
           <span className="group relative cursor-help">
             {field["Field Name"]}
-            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+            <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -1496,7 +1589,7 @@ const GenericField: React.FC<GenericFieldProps> = ({
                 d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
               ></path>
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -1530,7 +1623,7 @@ const GenericField: React.FC<GenericFieldProps> = ({
               />
               <circle cx="12" cy="10" r="2" fill="currentColor" />
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -1645,8 +1738,6 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
   onDataUpdate
 }) => {
   const { data: session } = useSession();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editValue, setEditValue] = useState(fieldValue || '');
   const [isSaving, setIsSaving] = useState(false);
   const [displayValue, setDisplayValue] = useState(fieldValue);
   const [showFieldHistory, setShowFieldHistory] = useState(false);
@@ -1656,9 +1747,16 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
   // Sync displayValue with fieldValue prop changes
   useEffect(() => {
     setDisplayValue(fieldValue);
-    setEditValue(fieldValue || '');
   }, [fieldValue]);
   const [options, setOptions] = useState<string[]>([]);
+
+  // Helper function to extract clean option value (remove metadata)
+  const extractCleanValue = (optionString: string): string => {
+    if (!optionString) return '';
+    // Extract just the option name before metadata like "(Color: #..., Order: ..., ID: ...)"
+    const match = optionString.match(/^([^(]+?)(?:\s*\(Color:|$)/);
+    return match ? match[1].trim() : optionString.trim();
+  };
 
   // Parse options from field Options string
   useEffect(() => {
@@ -1670,19 +1768,15 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
     }
   }, [field.Options]);
 
-  const handleSave = async () => {
+  const handleChange = async (newValue: string) => {
     if (isSaving) return;
     
-    // Check if value actually changed
-    if (editValue === displayValue) {
-      setIsModalOpen(false);
-      toast.success('No changes to save');
-      return;
-    }
+    // Extract clean value (without metadata)
+    const cleanValue = extractCleanValue(newValue);
+    const cleanDisplayValue = extractCleanValue(displayValue);
     
-    // Validate that the selected value is in the allowed options
-    if (editValue && !options.includes(editValue)) {
-      toast.error(`Invalid option "${editValue}". Please select from available choices: ${options.join(', ')}`);
+    // Check if value actually changed
+    if (cleanValue === cleanDisplayValue) {
       return;
     }
     
@@ -1713,7 +1807,7 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
           table_id: tableId,
           row_id: recordId.toString(),
           field_data: {
-            [field["Field ID"]]: editValue
+            [field["Field ID"]]: cleanValue  // Save only the clean value without metadata
           }
         })
       });
@@ -1727,42 +1821,15 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
       const result = await response.json();
       console.log('API Response:', result);
       
-      // Verify the update after a short delay
-      setTimeout(async () => {
-        try {
-          const verifyResponse = await fetch(`/api/proxy/nocodb/verify-update?table_id=${tableId}&row_id=${recordId}&field_id=${field["Field ID"]}`, {
-            headers: { 'Authorization': authHeader },
-          });
-          
-          if (verifyResponse.ok) {
-            const verifyData = await verifyResponse.json();
-            const actualValue = verifyData.value;
-            
-            if (actualValue === editValue) {
-              // Update local display value immediately for better UX
-              setDisplayValue(editValue);
-              toast.success(`${field["Field Name"]} updated successfully!`);
-              
-              // Trigger data refresh to sync with backend
-              if (onDataUpdate) {
-                onDataUpdate();
-              }
-            } else {
-              toast.error(`Failed to update ${field["Field Name"]}: Value not accepted by database`);
-              // Reset to original value on error
-              setEditValue(displayValue || '');
-            }
-          } else {
-            toast.error(`${field["Field Name"]} update status unclear. Please refresh to verify changes.`);
-          }
-        } catch (verifyError) {
-          console.error('Verification error:', verifyError);
-          toast.error(`${field["Field Name"]} update sent, but verification failed. Please refresh to check.`);
-        }
-      }, 500);
-      
-      setIsModalOpen(false);
+      // Update local display value immediately for better UX
+      setDisplayValue(cleanValue);
       toast.dismiss(loadingToast);
+      toast.success(`${field["Field Name"]} updated successfully!`);
+      
+      // Trigger data refresh to sync with backend
+      if (onDataUpdate) {
+        onDataUpdate();
+      }
       
     } catch (error) {
       console.error('Error updating field:', error);
@@ -1771,11 +1838,6 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleCancel = () => {
-    setEditValue(displayValue || '');
-    setIsModalOpen(false);
   };
 
   const loadFieldHistory = async () => {
@@ -1817,178 +1879,142 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
   };
 
   return (
-    <>
-      <div 
-        className="relative p-3 border border-border/20 rounded-lg bg-card cursor-pointer hover:bg-accent/20 transition-colors"
-        style={{ minHeight: `${calculatedHeight}px` }}
-        data-field-id={field["Field ID"]}
-        data-field-type={field.Type}
-        onClick={() => setIsModalOpen(true)}
-      >
-        <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
-          <span className="group relative cursor-help">
-            {field["Field Name"]}
-            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
-              <div>
-                <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
-              </div>
-              <div>
-                <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
-              </div>
-              {field.Description && (
-                <div className="mt-2">
-                  <span className="font-semibold text-primary">Description:</span>
-                  <div className="italic text-muted-foreground">{field.Description}</div>
-                </div>
-              )}
+    <div 
+      className="relative p-3 border border-border/20 rounded-lg bg-card hover:bg-accent/20 transition-colors"
+      style={{ minHeight: `${calculatedHeight}px` }}
+      data-field-id={field["Field ID"]}
+      data-field-type={field.Type}
+    >
+      <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
+        <span className="group relative cursor-help">
+          {field["Field Name"]}
+          <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+            <div>
+              <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
             </div>
-          </span>
-          {field["Table"] === "Projects" ? (
-            <div
-              className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
-              title="Project field"
-            >
-              <svg
-              className="w-3 h-3 text-red-600 dark:text-red-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-              ></path>
-              </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
-              <div>
-                <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
-              </div>
-              <div>
-                <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
-              </div>
-              {field.Description && (
-                <div className="mt-2">
-                <span className="font-semibold text-red-700">Description:</span>
+            <div>
+              <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+            </div>
+            {field.Description && (
+              <div className="mt-2">
+                <span className="font-semibold text-primary">Description:</span>
                 <div className="italic text-muted-foreground">{field.Description}</div>
-                </div>
-              )}
               </div>
-            </div>
-            ) : (
-            <div
-              className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
-              title="Plot field"
-            >
-              <svg
-              className="w-3 h-3 text-blue-600 dark:text-blue-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
-              />
-              <circle cx="12" cy="10" r="2" fill="currentColor" />
-              </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
-              <div>
-                <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
-              </div>
-              <div>
-                <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
-              </div>
-              {field.Description && (
-                <div className="mt-2">
-                <span className="font-semibold text-blue-700">Description:</span>
-                <div className="italic text-muted-foreground">{field.Description}</div>
-                </div>
-              )}
-              </div>
-            </div>
             )}
-        </div>
-        <div className="text-xs text-muted-foreground">
-          {displayValue || 'Click to select option...'}
-        </div>
-      </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-lg shadow-2xl max-w-md w-full mx-4">
-            <div className="flex items-center justify-between p-4 border-b border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-t-lg">
-              <h3 className="text-lg font-semibold text-white">
-                Edit {field["Field Name"]}
-              </h3>
-              <button
-                onClick={handleCancel}
-                className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
+          </div>
+        </span>
+        {field["Table"] === "Projects" ? (
+          <div
+            className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
+            title="Project field"
+          >
+            <svg
+            className="w-3 h-3 text-red-600 dark:text-red-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+            ></path>
+            </svg>
+            <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+            <div>
+              <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
             </div>
-
-            <div className="p-4 bg-gray-900 dark:bg-gray-800">
-              {options.length > 0 ? (
-                <select
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  className="w-full p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                  disabled={isSaving}
-                >
-                  <option value="">-- Select Option --</option>
-                  {options.map((option, index) => (
-                    <option key={index} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  className="w-full p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
-                  placeholder="Enter value (no options defined)..."
-                  disabled={isSaving}
-                />
-              )}
-              {options.length > 0 && (
-                <div className="mt-2 text-xs text-gray-400">
-                  Available options: {options.join(', ')}
-                </div>
-              )}
+            <div>
+              <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
             </div>
-
-            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-b-lg">
-              <button
-                onClick={handleCancel}
-                className="px-4 py-2 text-sm border border-gray-600 text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
-                disabled={isSaving}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className={`px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ${
-                  isSaving ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                disabled={isSaving}
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
+            {field.Description && (
+              <div className="mt-2">
+              <span className="font-semibold text-red-700">Description:</span>
+              <div className="italic text-muted-foreground">{field.Description}</div>
+              </div>
+            )}
             </div>
           </div>
+          ) : (
+          <div
+            className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
+            title="Plot field"
+          >
+            <svg
+            className="w-3 h-3 text-blue-600 dark:text-blue-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
+            />
+            <circle cx="12" cy="10" r="2" fill="currentColor" />
+            </svg>
+            <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+            <div>
+              <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
+            </div>
+            <div>
+              <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
+            </div>
+            {field.Description && (
+              <div className="mt-2">
+              <span className="font-semibold text-blue-700">Description:</span>
+              <div className="italic text-muted-foreground">{field.Description}</div>
+              </div>
+            )}
+            </div>
+          </div>
+          )}
+        <button
+          onClick={handleShowHistory}
+          className="ml-auto p-1 rounded hover:bg-accent/40 transition-colors group relative"
+          title="View field history"
+        >
+          <svg className="w-4 h-4 text-muted-foreground group-hover:text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+        </button>
+      </div>
+      
+      {/* Inline Dropdown */}
+      {options.length > 0 ? (
+        <select
+          value={extractCleanValue(displayValue)}
+          onChange={(e) => handleChange(e.target.value)}
+          className="w-full p-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+          disabled={isSaving}
+        >
+          <option value="">-- Select Option --</option>
+          {options.map((option, index) => {
+            const cleanValue = extractCleanValue(option);
+            return (
+              <option key={index} value={cleanValue}>
+                {cleanValue}
+              </option>
+            );
+          })}
+        </select>
+      ) : (
+        <div className="text-xs text-muted-foreground">
+          No options available
         </div>
       )}
-    </>
+      
+      {showFieldHistory && (
+        <FieldHistoryModal
+          field={field}
+          auditRecords={fieldAuditRecords}
+          isLoading={fieldHistoryLoading}
+          onClose={() => setShowFieldHistory(false)}
+        />
+      )}
+    </div>
   );
 };
 
@@ -2224,7 +2250,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
         <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
           <span className="group relative cursor-help">
             {field["Field Name"]}
-            <div className="absolute z-50 left-0 bottom-6 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+            <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -2257,7 +2283,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
                 d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
               ></path>
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -2291,7 +2317,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
               />
               <circle cx="12" cy="10" r="2" fill="currentColor" />
               </svg>
-              <div className="absolute z-50 left-0 bottom-7 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
               <div>
                 <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
               </div>
@@ -3195,7 +3221,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                     return (
                                       <div
                                         key={`${field.source}-${idx}`}
-                                        className="relative p-3 border border-red-300/50 rounded-lg bg-red-50/30 cursor-not-allowed"
+                                        className="relative p-3 border border-red-300/50 rounded-lg cursor-not-allowed"
                                         style={{
                                           minHeight: `${calculatedHeight}px`
                                         }}
@@ -3203,7 +3229,7 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                         data-field-type={field.Type}
                                       >
                                         {/* Field name - top */}
-                                        <div className="text-sm font-medium text-red-800 mb-2 break-words flex items-center gap-2">
+                                        <div className="text-sm font-medium  mb-2 break-words flex items-center gap-2">
                                           <span>{field["Field Name"]}</span>
                                           {field["Table"] === "Projects" && (
                                             <div className="p-1 rounded bg-green-100 dark:bg-green-900/30" title="Project field">
@@ -3216,10 +3242,6 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
 
                                         {/* Field info and value */}
                                         <div className="text-xs text-red-600 space-y-1">
-                                          <div className="font-mono">
-                                            ID: {field["Field ID"]} • Type: {field.Type}
-                                          </div>
-                                          <div className="text-red-700">
                                             {fieldValue !== null && fieldValue !== undefined ? (
                                               Array.isArray(fieldValue)
                                                 ? fieldValue.join(', ')
@@ -3227,10 +3249,6 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
                                             ) : (
                                               <span className="italic">N/A</span>
                                             )}
-                                          </div>
-                                          {isProjectField && (
-                                            <span className="text-green-600 font-medium">(Project)</span>
-                                          )}
                                         </div>
                                       </div>
                                     );

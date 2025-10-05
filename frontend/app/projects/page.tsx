@@ -1,7 +1,7 @@
 "use client";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { PlotDisplay } from './PlotDisplay';
@@ -9,6 +9,12 @@ import { WithPageAccess } from '@/components/WithPageAccess';
 import { getUserGroups } from '@/lib/auth-utils';
 
 console.log('📄 projects/page.tsx: File loaded');
+
+// Track plot selections with timestamps for order preservation
+interface PlotSelection {
+  id: string;
+  selectedAt: number;
+}
 
 interface PlotData {
   raw: string;
@@ -126,15 +132,22 @@ function ProjectsPageContent() {
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedPlotIds, setSelectedPlotIds] = useState<string[]>([]);  // Changed from selectedProjectIds
+  const [plotSelections, setPlotSelections] = useState<PlotSelection[]>([]); // Track selection order
   const [plotsData, setPlotsData] = useState<PlotsResponse | null>(null);
   const [plotsLoading, setPlotsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [schemaData, setSchemaData] = useState<any[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
   
+  // Debounce timer for batch loading
+  const loadDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const pendingPlotIds = useRef<Set<string>>(new Set());
+  
   // Get user groups for role-based filtering
   const userGroups = session ? getUserGroups(session) : [];
   const isAgentPeter = userGroups.some(group => group.toLowerCase() === 'agent peter');
+  const isAgentfrost = userGroups.some(group => group.toLowerCase() === 'frost');
+  const isAgentGiG = userGroups.some(group => group.toLowerCase() === 'gig');
   
   // Sidebar state for filters - automatically open when no sites are selected
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -181,6 +194,14 @@ function ProjectsPageContent() {
         if (Array.isArray(parsed)) {
           console.log('Setting selectedPlotIds from cookies:', parsed);
           setSelectedPlotIds(parsed);
+          
+          // Restore selection order with timestamps (older selections get earlier timestamps)
+          const baseTime = Date.now() - (parsed.length * 1000); // Space selections 1 second apart
+          const selections: PlotSelection[] = parsed.map((id, index) => ({
+            id,
+            selectedAt: baseTime + (index * 1000)
+          }));
+          setPlotSelections(selections);
         }
       } catch (error) {
         console.error('Failed to parse saved plot selections from cookies:', error);
@@ -406,6 +427,7 @@ function ProjectsPageContent() {
   };
 
   // Fetch plots data based on selected plot IDs - using consolidated backend endpoint
+  // Ordered by selection time for better UX
   const fetchPlotsData = async () => {
     if (selectedPlotIds.length === 0) {
       setPlotsData(null);
@@ -416,14 +438,19 @@ function ProjectsPageContent() {
       setPlotsLoading(true);
       console.log('Fetching plots data with IDs:', selectedPlotIds);
       
+      // Get ordered plot IDs based on selection timestamps
+      const orderedPlotIds = plotSelections
+        .sort((a, b) => a.selectedAt - b.selectedAt)
+        .map(sel => sel.id);
+      
       // Convert S### format to numeric format for API (S013 -> 013, S001 -> 001)
-      const formattedPlotIds = selectedPlotIds.map(siteId => formatPlotIdForAPI(siteId)).filter(id => id);
+      const formattedPlotIds = orderedPlotIds.map(siteId => formatPlotIdForAPI(siteId)).filter(id => id);
       const plotIdsParam = formattedPlotIds.join(',');
       
-      console.log('Converted plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
+      console.log('Ordered plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}&preserve_order=true`
       );
       
       if (response.ok) {
@@ -507,8 +534,10 @@ function ProjectsPageContent() {
     return parseInt(numericId, 10).toString(); // Convert to number then back to string to remove leading zeros
   };
 
-  // Handle plot selection (store full S### format)
+  // Handle plot selection (store full S### format with timestamp for ordering)
   const handlePlotSelection = (siteId: string, isSelected: boolean) => {
+    const now = Date.now();
+    
     setSelectedPlotIds(prev => {
       if (isSelected) {
         return [...prev, siteId]; // Store full site ID like "S013"
@@ -516,12 +545,45 @@ function ProjectsPageContent() {
         return prev.filter(id => id !== siteId);
       }
     });
+    
+    setPlotSelections(prev => {
+      if (isSelected) {
+        // Add new selection with current timestamp
+        return [...prev, { id: siteId, selectedAt: now }];
+      } else {
+        // Remove from selections
+        return prev.filter(sel => sel.id !== siteId);
+      }
+    });
+    
+    // Debounce the actual data fetch to batch rapid selections
+    if (loadDebounceTimer.current) {
+      clearTimeout(loadDebounceTimer.current);
+    }
+    
+    if (isSelected) {
+      pendingPlotIds.current.add(siteId);
+    } else {
+      pendingPlotIds.current.delete(siteId);
+    }
+    
+    // Wait 300ms for more selections before fetching
+    loadDebounceTimer.current = setTimeout(() => {
+      console.log('Debounce timer fired, fetching plots');
+      pendingPlotIds.current.clear();
+      // The useEffect will trigger fetchPlotsData when selectedPlotIds changes
+    }, 300);
   };
 
   // Clear plot selection
   const clearPlotSelection = () => {
     setSelectedPlotIds([]);
+    setPlotSelections([]);
     setPlotsData(null);
+    pendingPlotIds.current.clear();
+    if (loadDebounceTimer.current) {
+      clearTimeout(loadDebounceTimer.current);
+    }
     // Clear from cookies too
     setCookie('selectedPlotIds', '[]');
   };
@@ -685,6 +747,28 @@ function ProjectsPageContent() {
       setSelectedPartner('');
     }
   }, [isAgentPeter, allProjects.length]);
+
+  // Apply group-based filtering for Frost users
+  useEffect(() => {
+    if (isAgentfrost && allProjects.length > 0) {
+      console.log('🔐 Frost user detected: Auto-applying filters');
+      // Lock to "Bifrost" partner filter
+      setSelectedPartner('Bifrost');
+      // Agent filter stays empty (All Agents)
+      setSelectedAgent('');
+    }
+  }, [isAgentfrost, allProjects.length]);
+
+  // Apply group-based filtering for GiG users
+  useEffect(() => {
+    if (isAgentGiG && allProjects.length > 0) {
+      console.log('🔐 GiG user detected: Auto-applying filters');
+      // Lock to "GIGA-42" partner filter
+      setSelectedPartner('GIGA-42');
+      // Agent filter stays empty (All Agents)
+      setSelectedAgent('');
+    }
+  }, [isAgentGiG, allProjects.length]);
 
   // Filter projects when filters change
   useEffect(() => {
@@ -862,8 +946,8 @@ function ProjectsPageContent() {
             <div className="p-4 h-full flex flex-col">
               {/* Filtering Controls */}
               <div className="space-y-4 mb-6">
-                {/* Partner Dropdown - Hidden for Agent Peter */}
-                {!isAgentPeter && (
+                {/* Partner Dropdown - Hidden for Agent Peter, Frost, and GiG */}
+                {!isAgentPeter && !isAgentfrost && !isAgentGiG && (
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Project Partner
@@ -883,8 +967,8 @@ function ProjectsPageContent() {
                   </div>
                 )}
 
-                {/* Agent Dropdown - Hidden for Agent Peter */}
-                {!isAgentPeter && (
+                {/* Agent Dropdown - Hidden for Agent Peter, Frost, and GiG */}
+                {!isAgentPeter && !isAgentfrost && !isAgentGiG && (
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Agent
@@ -909,8 +993,27 @@ function ProjectsPageContent() {
                   <div className="bg-accent/50 border border-border rounded-md p-3">
                     <p className="text-sm font-medium text-foreground mb-2">Active Filters:</p>
                     <div className="space-y-1 text-sm text-muted-foreground">
-                      <p>• Partner: <span className="text-foreground">All Partners</span></p>
                       <p>• Agent: <span className="text-foreground">Peter Sladey - NMG Estonia</span></p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show active filters for Frost users */}
+                {isAgentfrost && (
+                  <div className="bg-accent/50 border border-border rounded-md p-3">
+                    <p className="text-sm font-medium text-foreground mb-2">Active Filters:</p>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>• Partner: <span className="text-foreground">Bifrost</span></p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show active filters for GiG users */}
+                {isAgentGiG && (
+                  <div className="bg-accent/50 border border-border rounded-md p-3">
+                    <p className="text-sm font-medium text-foreground mb-2">Active Filters:</p>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>• Partner: <span className="text-foreground">GIGA-42</span></p>
                     </div>
                   </div>
                 )}
@@ -929,8 +1032,8 @@ function ProjectsPageContent() {
                   />
                 </div>
 
-                {/* Clear Filters - Only show search clear for Agent Peter */}
-                {!isAgentPeter && (
+                {/* Clear Filters - Only show search clear for Agent Peter, Frost, and GiG */}
+                {!isAgentPeter && !isAgentfrost && !isAgentGiG && (
                   <Button
                     onClick={clearFilters}
                     variant="outline"
@@ -939,7 +1042,7 @@ function ProjectsPageContent() {
                     Clear Filters
                   </Button>
                 )}
-                {isAgentPeter && searchTerm && (
+                {(isAgentPeter || isAgentfrost || isAgentGiG) && searchTerm && (
                   <Button
                     onClick={() => setSearchTerm('')}
                     variant="outline"

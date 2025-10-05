@@ -993,15 +993,25 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
         )
 
 @app.get("/projects/plots", tags=["Projects"])
-def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Optional[str] = Query(None, description="Comma-separated list of numeric plot IDs to filter by")):
+def get_plots_data(
+    current_user: dict = Depends(get_current_user), 
+    plot_ids: Optional[str] = Query(None, description="Comma-separated list of numeric plot IDs to filter by"),
+    preserve_order: bool = Query(True, description="Preserve the order of plot_ids in the response")
+):
     """Get detailed plots and projects data in export script format with schema and nested projects/plots structure"""
     from collections import OrderedDict
     
     try:
-        # Parse numeric plot IDs from query parameter
+        # Parse numeric plot IDs from query parameter, preserving order
         selected_plot_ids = []
+        requested_order = []  # Track original request order
         if plot_ids:
-            selected_plot_ids = [int(pid.strip()) for pid in plot_ids.split(',') if pid.strip().isdigit()]
+            for pid in plot_ids.split(','):
+                pid_clean = pid.strip()
+                if pid_clean.isdigit():
+                    plot_id = int(pid_clean)
+                    selected_plot_ids.append(plot_id)
+                    requested_order.append(plot_id)
         
         # If no plot_ids provided, return empty structure
         if not selected_plot_ids:
@@ -1205,6 +1215,56 @@ def get_plots_data(current_user: dict = Depends(get_current_user), plot_ids: Opt
                 if pid is not None:
                     plots_by_pid.setdefault(pid, []).append(p)
 
+            for proj_id in sorted(projects_fk_set):
+                try:
+                    url = f"{nocodb_api_url}/api/v2/tables/{PROJECTS_TABLE_ID}/records/{proj_id}"
+                    r = requests.get(url, headers=headers, verify=False)
+                    if r.status_code != 200:
+                        continue
+                    prow = r.json() or {}
+                    project_obj = {
+                        "_db_id": prow.get("id", proj_id),
+                        "values": map_values_by_field_id(prow, schema_by_table["Projects"]),
+                        "plots": plots_by_pid.get(proj_id, [])
+                    }
+                    projects.append(project_obj)
+                except Exception:
+                    continue
+        
+        # -------------------------
+        # 4b) PRESERVE ORDER IF REQUESTED
+        # -------------------------
+        if preserve_order and requested_order:
+            # Create lookup dict for plots by ID
+            plots_by_id = {p["_db_id"]: p for p in plots}
+            # Reorder plots to match requested order
+            ordered_plots = []
+            for req_id in requested_order:
+                if req_id in plots_by_id:
+                    ordered_plots.append(plots_by_id[req_id])
+            # Use ordered list
+            plots = ordered_plots
+            
+            # Also need to rebuild projects with ordered plots
+            plots_by_pid = {}
+            for p in plots:
+                pid = None
+                # Extract project FK using same logic as before
+                for key in ["chap8h7mt25wqlp", "projects_id", "Projects_id", "project_id", "ProjectID", "project", "Project", "Projects"]:
+                    if key in p:
+                        val = p.get(key)
+                        if isinstance(val, dict) and "id" in val:
+                            val = val.get("id")
+                        elif isinstance(val, list) and val and isinstance(val[0], dict) and "id" in val[0]:
+                            val = val[0].get("id")
+                        if isinstance(val, (int, str)) and str(val).isdigit():
+                            pid = int(val)
+                            break
+                if pid is not None:
+                    plots_by_pid.setdefault(pid, []).append(p)
+            
+            # Rebuild projects list with correctly ordered plots
+            projects = []
             for proj_id in sorted(projects_fk_set):
                 try:
                     url = f"{nocodb_api_url}/api/v2/tables/{PROJECTS_TABLE_ID}/records/{proj_id}"
