@@ -1553,92 +1553,103 @@ const GenericField: React.FC<GenericFieldProps> = ({
         onClick={() => setIsModalOpen(true)}
       >
         {/* Field name - top */}
-        <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2">
-          <span className="group relative cursor-help">
-            {field["Field Name"]}
-            <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
-              <div>
-                <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+        <div className="text-sm font-medium text-foreground mb-2 break-words flex items-center gap-2 justify-between">
+          <div className="flex items-center gap-2">
+            <span className="group relative cursor-help">
+              {field["Field Name"]}
+              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                <div>
+                  <span className="font-semibold text-primary">Type:</span> <span className="font-mono">{field.Type}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
+                </div>
+                {field.Description && (
+                  <div className="mt-2">
+                    <span className="font-semibold text-primary">Description:</span>
+                    <div className="italic text-muted-foreground">{field.Description}</div>
+                  </div>
+                )}
               </div>
-              <div>
-                <span className="font-semibold text-primary">Table:</span> <span className="font-mono">{field.Table}</span>
-              </div>
-              {field.Description && (
-                <div className="mt-2">
-                  <span className="font-semibold text-primary">Description:</span>
+            </span>
+            {field["Table"] === "Projects" ? (
+              <div
+                className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
+                title="Project field"
+              >
+                <svg
+                className="w-3 h-3 text-red-600 dark:text-red-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                ></path>
+                </svg>
+                <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                <div>
+                  <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
+                </div>
+                {field.Description && (
+                  <div className="mt-2">
+                  <span className="font-semibold text-red-700">Description:</span>
                   <div className="italic text-muted-foreground">{field.Description}</div>
+                  </div>
+                )}
                 </div>
-              )}
-            </div>
-          </span>
-          {field["Table"] === "Projects" ? (
-            <div
-              className="p-1 rounded bg-red-100 dark:bg-red-900/30 group relative"
-              title="Project field"
-            >
-              <svg
-              className="w-3 h-3 text-red-600 dark:text-red-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+              </div>
+              ) : (
+              <div
+                className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
+                title="Plot field"
               >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-              ></path>
-              </svg>
-              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
-              <div>
-                <span className="font-semibold text-red-700">Type:</span> <span className="font-mono">{field.Type}</span>
-              </div>
-              <div>
-                <span className="font-semibold text-red-700">Table:</span> <span className="font-mono">{field.Table}</span>
-              </div>
-              {field.Description && (
-                <div className="mt-2">
-                <span className="font-semibold text-red-700">Description:</span>
-                <div className="italic text-muted-foreground">{field.Description}</div>
+                <svg
+                className="w-3 h-3 text-blue-600 dark:text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
+                />
+                <circle cx="12" cy="10" r="2" fill="currentColor" />
+                </svg>
+                <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
+                <div>
+                  <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
                 </div>
-              )}
-              </div>
-            </div>
-            ) : (
-            <div
-              className="p-1 rounded bg-blue-100 dark:bg-blue-900/30 group relative"
-              title="Plot field"
-            >
-              <svg
-              className="w-3 h-3 text-blue-600 dark:text-blue-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M9 20l-5.447-2.724A2 2 0 013 15.382V5.618a2 2 0 011.553-1.894l5.447-1.362a2 2 0 01.894 0l5.447 1.362A2 2 0 0121 5.618v9.764a2 2 0 01-1.553 1.894L15 20"
-              />
-              <circle cx="12" cy="10" r="2" fill="currentColor" />
-              </svg>
-              <div className="absolute z-50 left-0 top-full mt-2 min-w-[220px] bg-background border border-border rounded shadow-lg p-3 text-xs hidden group-hover:block">
-              <div>
-                <span className="font-semibold text-blue-700">Type:</span> <span className="font-mono">{field.Type}</span>
-              </div>
-              <div>
-                <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
-              </div>
-              {field.Description && (
-                <div className="mt-2">
-                <span className="font-semibold text-blue-700">Description:</span>
-                <div className="italic text-muted-foreground">{field.Description}</div>
+                <div>
+                  <span className="font-semibold text-blue-700">Table:</span> <span className="font-mono">{field.Table}</span>
                 </div>
-              )}
+                {field.Description && (
+                  <div className="mt-2">
+                  <span className="font-semibold text-blue-700">Description:</span>
+                  <div className="italic text-muted-foreground">{field.Description}</div>
+                  </div>
+                )}
+                </div>
               </div>
-            </div>
-            )}
+              )}
+          </div>
+          <button
+            onClick={handleShowHistory}
+            className="ml-auto p-1 rounded hover:bg-accent/40 transition-colors group relative"
+            title="View field history"
+          >
+            <svg className="w-4 h-4 text-muted-foreground group-hover:text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </button>
         </div>
         
         {/* Field value - below field name */}
