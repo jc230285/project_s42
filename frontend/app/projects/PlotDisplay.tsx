@@ -2007,12 +2007,42 @@ const SingleSelectField: React.FC<SingleSelectFieldProps> = ({
       )}
       
       {showFieldHistory && (
-        <FieldHistoryModal
-          field={field}
-          auditRecords={fieldAuditRecords}
-          isLoading={fieldHistoryLoading}
-          onClose={() => setShowFieldHistory(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={() => setShowFieldHistory(false)}>
+          <div className="w-96 bg-background border-l border-border h-full overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
+              <h3 className="font-semibold">Field History: {field["Field Name"]}</h3>
+              <button onClick={() => setShowFieldHistory(false)} className="text-muted-foreground hover:text-foreground">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              {fieldHistoryLoading ? (
+                <div className="text-center text-muted-foreground">Loading history...</div>
+              ) : fieldAuditRecords.length === 0 ? (
+                <div className="text-center text-muted-foreground">No history available</div>
+              ) : (
+                <div className="space-y-3">
+                  {fieldAuditRecords.map((record, idx) => (
+                    <div key={idx} className="border border-border rounded p-3 text-sm">
+                      <div className="font-medium text-primary">{record.user_name || record.user}</div>
+                      <div className="text-xs text-muted-foreground">{new Date(record.created_at).toLocaleString()}</div>
+                      <div className="mt-2 space-y-1">
+                        {record.previous_value !== undefined && (
+                          <div><span className="font-semibold">From:</span> {record.previous_value || '(empty)'}</div>
+                        )}
+                        {record.value !== undefined && (
+                          <div><span className="font-semibold">To:</span> {record.value || '(empty)'}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
