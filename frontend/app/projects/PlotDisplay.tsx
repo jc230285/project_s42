@@ -272,6 +272,10 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
           }
         }) || [];
         console.log(`Filtered ${fieldRecords.length} records for field ${field["Field Name"]}`);
+        console.log('Sample record:', fieldRecords[0]);
+        if (fieldRecords[0]?.details) {
+          console.log('Parsed details:', JSON.parse(fieldRecords[0].details));
+        }
         setFieldAuditRecords(fieldRecords);
       } else {
         const errorText = await response.text();
@@ -540,10 +544,11 @@ const GeoDataField: React.FC<GeoDataFieldProps> = ({
                 <div className="space-y-2">
                   {fieldAuditRecords.map((record, idx) => {
                     const details = record.details ? JSON.parse(record.details) : {};
-                    const columnMeta = details.column_meta || {};
                     const fieldName = field["Field Name"];
-                    const oldValue = details.old_values?.[fieldName];
-                    const newValue = details.new_values?.[fieldName];
+                    // The old value is in details.old_data[fieldName]
+                    // The new value is in details.data[fieldName]
+                    const oldValue = details.old_data?.[fieldName];
+                    const newValue = details.data?.[fieldName];
                     
                     return (
                       <div key={idx} className="bg-background/60 rounded p-2 border border-border/10">
@@ -1824,28 +1829,45 @@ const GenericField: React.FC<GenericFieldProps> = ({
               ) : fieldAuditRecords.length === 0 ? (
                 <div className="text-center text-muted-foreground">No history available</div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {fieldAuditRecords.map((record, idx) => {
                     const details = record.details ? JSON.parse(record.details) : {};
-                    const columnMeta = details.column_meta || {};
                     const fieldName = field["Field Name"];
-                    const fieldMeta = columnMeta[fieldName] || {};
+                    // The old value is in details.old_data[fieldName]
+                    // The new value is in details.data[fieldName]
+                    const oldValue = details.old_data?.[fieldName];
+                    const newValue = details.data?.[fieldName];
                     
                     return (
-                      <div key={idx} className="border border-border rounded p-3 text-sm">
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="font-medium text-primary">{record.user_name || record.user_email}</div>
-                          <div className="text-xs text-muted-foreground ml-auto">
-                            {new Date(record.timestamp || record.created_at).toLocaleString()}
+                      <div key={idx} className="bg-background/60 rounded p-2 border border-border/10">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="p-1 rounded bg-green-100 dark:bg-green-900/30">
+                            <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
                           </div>
+                          <span className="text-xs font-medium text-foreground">
+                            {record.user_name || record.user_email || 'System'}
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-auto">
+                            {(() => {
+                              const date = new Date(record.timestamp || record.created_at);
+                              const day = String(date.getDate()).padStart(2, '0');
+                              const month = String(date.getMonth() + 1).padStart(2, '0');
+                              const year = date.getFullYear();
+                              return `${day}/${month}/${year}`;
+                            })()}
+                          </span>
                         </div>
-                        <div className="mt-2 space-y-1">
-                          {details.old_values && details.old_values[fieldName] !== undefined && (
-                            <div><span className="font-semibold">From:</span> {String(details.old_values[fieldName]) || '(empty)'}</div>
-                          )}
-                          {details.new_values && details.new_values[fieldName] !== undefined && (
-                            <div><span className="font-semibold">To:</span> {String(details.new_values[fieldName]) || '(empty)'}</div>
-                          )}
+                        <div className="ml-1 text-xs">
+                          {oldValue !== undefined && newValue !== undefined ? (
+                            <>
+                              <div className="text-muted-foreground"><span className="font-semibold">From:</span> {String(oldValue) || '(empty)'}</div>
+                              <div className="text-foreground"><span className="font-semibold">To:</span> {String(newValue) || '(empty)'}</div>
+                            </>
+                          ) : newValue !== undefined ? (
+                            <div className="text-foreground"><span className="font-semibold">Set to:</span> {String(newValue) || '(empty)'}</div>
+                          ) : null}
                         </div>
                       </div>
                     );
