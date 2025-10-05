@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
+import { hasScale42Access } from '@/lib/auth-utils';
 
 interface SchemaField {
   "Field Name": string;
@@ -3192,24 +3193,38 @@ export const PlotDisplay: React.FC<PlotDisplayProps> = ({
     <div ref={containerRef} className="bg-muted/30 rounded-lg p-4 border border-border/50 min-w-96 max-w-[600px] flex-shrink-0">
       {/* Plot Header */}
       <div className="mb-3 border-b border-border/20 pb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-900 dark:text-blue-200">
-            S{String(plot.id).padStart(3, '0')}
-            {plot.basic_data?.["cjn6mu5x6gythrx"] && (
-              <span className="ml-2 font-semibold">
-                {plot.basic_data["cjn6mu5x6gythrx"]}
-              </span>
-            )}
-          </span>
-          {parentProject && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200 dark:bg-green-900 dark:text-green-200">
-              P{String(parentProject._db_id).padStart(3, '0')}
-              {parentProject.values?.["c5udjaiacvutwek"] && (
+        <div className="flex items-center gap-2 flex-wrap justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-900 dark:text-blue-200">
+              S{String(plot.id).padStart(3, '0')}
+              {plot.basic_data?.["cjn6mu5x6gythrx"] && (
                 <span className="ml-2 font-semibold">
-                  {parentProject.values["c5udjaiacvutwek"]}
+                  {plot.basic_data["cjn6mu5x6gythrx"]}
                 </span>
               )}
             </span>
+            {parentProject && (
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200 dark:bg-green-900 dark:text-green-200">
+                P{String(parentProject._db_id).padStart(3, '0')}
+                {parentProject.values?.["c5udjaiacvutwek"] && (
+                  <span className="ml-2 font-semibold">
+                    {parentProject.values["c5udjaiacvutwek"]}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+          {session && hasScale42Access(session) && (
+            <button
+              onClick={() => window.open(`/plots/${plot.id}`, '_blank')}
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:text-primary/80 hover:bg-primary/10 rounded transition-colors"
+              title="View printable plot details"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              View
+            </button>
           )}
         </div>
       </div>

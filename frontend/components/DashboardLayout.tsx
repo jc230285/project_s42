@@ -25,7 +25,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { hasScale42Access } from '@/lib/auth-utils';
 import { DynamicMenu } from '@/components/DynamicMenu';
 
-function DashboardLayout({ children, initialSidebarCollapsed = false, contentClassName }: { children: React.ReactNode, initialSidebarCollapsed?: boolean, contentClassName?: string }) {
+function DashboardLayout({ children, initialSidebarCollapsed = false, contentClassName, disableChat = false }: { children: React.ReactNode, initialSidebarCollapsed?: boolean, contentClassName?: string, disableChat?: boolean }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(!initialSidebarCollapsed);
   const { data: session } = useSession();
@@ -38,7 +38,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
 
   // Initialize n8n chat widget
   useEffect(() => {
-    if (session) {
+    if (session && !disableChat) {
       // Add CSS for n8n chat
       const link = document.createElement('link');
       link.href = 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css';
@@ -143,7 +143,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
         }
       };
     }
-  }, [session]);
+  }, [session, disableChat]);
 
   // Check if user has Scale42 access
   const hasScale42 = hasScale42Access(session);
@@ -154,7 +154,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
       <aside
         className={`${
           isSidebarOpen ? 'w-64' : 'w-16'
-        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col`}
+        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col print:hidden`}
       >
         {/* Sidebar Header with Logo and Toggle */}
         <div className="flex items-center justify-between p-4 border-b border-border">

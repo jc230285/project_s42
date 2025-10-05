@@ -86,3 +86,35 @@
     scrollbar-color: hsl(var(--muted-foreground) / 0.4) hsl(var(--muted) / 0.3);
   }
 }
+
+/* Print Styles - Must be AFTER @tailwind utilities to override */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+  
+  /* Force black text on all elements */
+  * {
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Ensure white backgrounds */
+  body,
+  html,
+  .bg-gray-900,
+  .bg-gray-800,
+  .bg-gray-700,
+  .bg-gray-600 {
+    background: white !important;
+  }
+  
+  /* Hide UI elements */
+  aside,
+  nav,
+  button {
+    display: none !important;
+  }
+}
