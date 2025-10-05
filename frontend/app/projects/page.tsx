@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { PlotDisplay } from './PlotDisplay';
 import { WithPageAccess } from '@/components/WithPageAccess';
 import { getUserGroups } from '@/lib/auth-utils';
+import toast from 'react-hot-toast';
 
 // Debug mode from environment
 const DEBUG_MODE = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
@@ -666,6 +667,51 @@ function ProjectsPageContent() {
     }
   };
 
+  // Handle status update for project
+  const handleStatusUpdate = async (projectId: number, newStatus: string) => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
+      const response = await fetch('/api/proxy/nocodb/update-row', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify({
+          table_id: 'mftsk8hkw23m8q1', // Projects table ID
+          row_id: projectId,
+          field_data: {
+            'c5l916pwjdtz3tk': newStatus // Status field ID
+          }
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`Status updated to: ${newStatus}`);
+        // Refresh the projects list to show the updated status
+        await fetchAllProjects();
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        toast.error(errorData.detail || `Failed to update status (${response.status})`);
+        console.error('Error details:', response.status, errorData);
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Failed to update status. Check console for details.');
+    }
+  };
+
   // Filter projects based on selected partner and search term
   const filterProjects = () => {
     let filtered = [...allProjects];
@@ -1246,23 +1292,32 @@ function ProjectsPageContent() {
                                           }
                                         </span>
                                       )}
-                                      {project["Status"] && (
-                                        <span className="text-xs text-muted-foreground">
-                                          Status: {project["Status"]}
+                                      {/* Country Badge */}
+                                      {project.Country && (
+                                        <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
+                                          {project.Country}
                                         </span>
                                       )}
-                                      {project["Agent"] && (
-                                        <span className="text-xs text-muted-foreground">
-                                          Agent: {project["Agent"]}
-                                        </span>
+                                      {/* Status dropdown - only on first plot */}
+                                      {index === 0 && project["Status"] && project.Id && (
+                                        <div className="ml-auto">
+                                          <select
+                                            value={project["Status"]}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              handleStatusUpdate(project.Id!, e.target.value);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-xs px-2 py-1 rounded border border-border bg-background text-foreground hover:bg-accent/20 transition-colors cursor-pointer"
+                                          >
+                                            <option value="Underway">Underway</option>
+                                            <option value="Closed">Closed</option>
+                                            <option value="On Hold">On Hold</option>
+                                            <option value="Completed">Completed</option>
+                                            <option value="Cancelled">Cancelled</option>
+                                          </select>
+                                        </div>
                                       )}
-                            {/* Country Badge */}
-                            {project.Country && (
-                              <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
-                                {project.Country}
-                              </span>
-                            )}
-
                                     </div>
                                   </div>
                                 </div>
