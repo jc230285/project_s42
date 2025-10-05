@@ -191,6 +191,17 @@ function ProjectsPageContent() {
     fetchUserGroups();
   }, [session]);
   
+  // Debug: Log plotsData structure when it changes
+  useEffect(() => {
+    if (plotsData) {
+      console.log('📊 plotsData structure:', plotsData);
+      console.log('📊 plotsData.plots:', plotsData.plots);
+      console.log('📊 plotsData.plots length:', plotsData.plots?.length);
+      console.log('📊 plotsData keys:', Object.keys(plotsData));
+      console.log('📊 Full plotsData JSON:', JSON.stringify(plotsData, null, 2));
+    }
+  }, [plotsData]);
+  
   // Get user groups for role-based filtering - use state if available, fallback to session
   const userGroups = userGroupsState.length > 0 ? userGroupsState : (session ? getUserGroups(session) : []);
   const isAgentPeter = userGroups.some(group => group.toLowerCase() === 'agent peter');
