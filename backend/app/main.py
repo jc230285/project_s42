@@ -19,6 +19,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
+# Debug mode configuration
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+
+def debug_print(*args, **kwargs):
+    """Print debug messages only if DEBUG_MODE is enabled"""
+    if DEBUG_MODE:
+        print(*args, **kwargs)
+
 # Disable SSL warnings for NocoDB API calls
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -1121,17 +1129,17 @@ def get_plots_data(
             return dict(vals)
 
         # 2a) Load selected land plot rows directly from NocoDB
-        print(f"📊 Backend: Fetching {len(selected_plot_ids)} plots: {selected_plot_ids}")
+        debug_print(f"📊 Backend: Fetching {len(selected_plot_ids)} plots: {selected_plot_ids}")
         for pid in selected_plot_ids:
             try:
                 url = f"{nocodb_api_url}/api/v2/tables/{LANDPLOTS_TABLE_ID}/records/{pid}"
                 r = requests.get(url, headers=headers, verify=False)
                 if r.status_code != 200:
-                    print(f"❌ Backend: Failed to fetch plot {pid}: status {r.status_code}")
+                    debug_print(f"❌ Backend: Failed to fetch plot {pid}: status {r.status_code}")
                     # Skip missing plots instead of failing entire request
                     continue
                 row = r.json() or {}
-                print(f"📊 Backend: Plot {pid} row keys: {list(row.keys())[:10]}")  # First 10 keys
+                debug_print(f"📊 Backend: Plot {pid} row keys: {list(row.keys())[:10]}")  # First 10 keys
 
                 # Determine FK to project from common patterns and relation payloads
                 fk_project_id = None
@@ -1145,7 +1153,7 @@ def get_plots_data(
                 ]:
                     if key in row:
                         val = row.get(key)
-                        print(f"📊 Backend: Plot {pid} found key '{key}' with value type: {type(val).__name__}, value: {val if not isinstance(val, dict) else 'dict'}")
+                        debug_print(f"📊 Backend: Plot {pid} found key '{key}' with value type: {type(val).__name__}, value: {val if not isinstance(val, dict) else 'dict'}")
                         # If relation is an array/dict, extract id
                         if isinstance(val, dict) and "id" in val:
                             val = val.get("id")
@@ -1154,7 +1162,7 @@ def get_plots_data(
                         # Normalize to int if numeric
                         if isinstance(val, (int, str)) and str(val).isdigit():
                             fk_project_id = int(val)
-                            print(f"✅ Backend: Plot {pid} FK resolved to project {fk_project_id} from key '{key}'")
+                            debug_print(f"✅ Backend: Plot {pid} FK resolved to project {fk_project_id} from key '{key}'")
                             break
 
                 # Fallback A: try via schema-mapped values using the field ID
@@ -1223,10 +1231,10 @@ def get_plots_data(
                     plots_by_pid.setdefault(pid, []).append(p)
             
             # Debug logging
-            print(f"📊 Backend: plots_by_pid keys: {list(plots_by_pid.keys())}")
-            print(f"📊 Backend: projects_fk_set: {sorted(list(projects_fk_set))}")
+            debug_print(f"📊 Backend: plots_by_pid keys: {list(plots_by_pid.keys())}")
+            debug_print(f"📊 Backend: projects_fk_set: {sorted(list(projects_fk_set))}")
             for pid, plist in plots_by_pid.items():
-                print(f"📊 Backend: Project {pid} has {len(plist)} plots")
+                debug_print(f"📊 Backend: Project {pid} has {len(plist)} plots")
 
             for proj_id in sorted(projects_fk_set):
                 try:
@@ -1236,7 +1244,7 @@ def get_plots_data(
                         continue
                     prow = r.json() or {}
                     project_plots = plots_by_pid.get(proj_id, [])
-                    print(f"📊 Backend: Project {proj_id} getting {len(project_plots)} plots")
+                    debug_print(f"📊 Backend: Project {proj_id} getting {len(project_plots)} plots")
                     project_obj = {
                         "_db_id": prow.get("id", proj_id),
                         "values": map_values_by_field_id(prow, schema_by_table["Projects"]),
@@ -1264,18 +1272,22 @@ def get_plots_data(
             # Also need to rebuild projects with ordered plots
             plots_by_pid = {}
             for p in plots:
-                pid = None
-                # Extract project FK using same logic as before
-                for key in ["chap8h7mt25wqlp", "projects_id", "Projects_id", "project_id", "ProjectID", "project", "Project", "Projects"]:
-                    if key in p:
-                        val = p.get(key)
-                        if isinstance(val, dict) and "id" in val:
-                            val = val.get("id")
-                        elif isinstance(val, list) and val and isinstance(val[0], dict) and "id" in val[0]:
-                            val = val[0].get("id")
-                        if isinstance(val, (int, str)) and str(val).isdigit():
-                            pid = int(val)
-                            break
+                # First check the _fk_projects_id that was already resolved
+                pid = p.get("_fk_projects_id")
+                
+                # If not found, try extracting from raw plot data
+                if pid is None:
+                    for key in ["chap8h7mt25wqlp", "projects_id", "Projects_id", "project_id", "ProjectID", "project", "Project", "Projects"]:
+                        if key in p:
+                            val = p.get(key)
+                            if isinstance(val, dict) and "id" in val:
+                                val = val.get("id")
+                            elif isinstance(val, list) and val and isinstance(val[0], dict) and "id" in val[0]:
+                                val = val[0].get("id")
+                            if isinstance(val, (int, str)) and str(val).isdigit():
+                                pid = int(val)
+                                break
+                
                 if pid is not None:
                     plots_by_pid.setdefault(pid, []).append(p)
             

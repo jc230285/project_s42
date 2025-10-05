@@ -8,7 +8,15 @@ import { PlotDisplay } from './PlotDisplay';
 import { WithPageAccess } from '@/components/WithPageAccess';
 import { getUserGroups } from '@/lib/auth-utils';
 
-console.log('📄 projects/page.tsx: File loaded');
+// Debug mode from environment
+const DEBUG_MODE = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+const debugLog = (...args: any[]) => {
+  if (DEBUG_MODE) {
+    debugLog(...args);
+  }
+};
+
+debugLog('📄 projects/page.tsx: File loaded');
 
 // Track plot selections with timestamps for order preservation
 interface PlotSelection {
@@ -112,7 +120,7 @@ interface PlotsResponse {
 }
 
 export default function ProjectsPage() {
-  console.log('📄 ProjectsPage: Component rendering');
+  debugLog('📄 ProjectsPage: Component rendering');
   return (
     <WithPageAccess pagePath="/projects">
       <ProjectsPageContent />
@@ -121,7 +129,7 @@ export default function ProjectsPage() {
 }
 
 function ProjectsPageContent() {
-  console.log('📄 ProjectsPageContent: Component rendering');
+  debugLog('📄 ProjectsPageContent: Component rendering');
   const { data: session, status } = useSession();
   const router = useRouter();
   const [allProjects, setAllProjects] = useState<ProjectData[]>([]);
@@ -158,24 +166,24 @@ function ProjectsPageContent() {
       // Check if groups are already in session
       const sessionGroups = getUserGroups(session);
       if (sessionGroups.length > 0) {
-        console.log('Groups found in session:', sessionGroups);
+        debugLog('Groups found in session:', sessionGroups);
         setUserGroupsState(sessionGroups);
         setGroupsLoaded(true);
         return;
       }
       
       // If no groups in session, fetch from backend
-      console.log('No groups in session, fetching from backend...');
+      debugLog('No groups in session, fetching from backend...');
       try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com';
         const response = await fetch(`${backendUrl}/auth/user-groups/${encodeURIComponent(session.user.email)}`);
         
         if (response.ok) {
           const userData = await response.json();
-          console.log('Fetched user groups from backend:', userData);
+          debugLog('Fetched user groups from backend:', userData);
           const groups = userData.groups ? userData.groups.map((g: any) => g.name) : [];
           setUserGroupsState(groups);
-          console.log('Set user groups state:', groups);
+          debugLog('Set user groups state:', groups);
         } else {
           console.error('Failed to fetch user groups:', response.status);
           setUserGroupsState([]);
@@ -194,11 +202,11 @@ function ProjectsPageContent() {
   // Debug: Log plotsData structure when it changes
   useEffect(() => {
     if (plotsData) {
-      console.log('📊 plotsData structure:', plotsData);
-      console.log('📊 plotsData.plots:', plotsData.plots);
-      console.log('📊 plotsData.plots length:', plotsData.plots?.length);
-      console.log('📊 plotsData keys:', Object.keys(plotsData));
-      console.log('📊 Full plotsData JSON:', JSON.stringify(plotsData, null, 2));
+      debugLog('📊 plotsData structure:', plotsData);
+      debugLog('📊 plotsData.plots:', plotsData.plots);
+      debugLog('📊 plotsData.plots length:', plotsData.plots?.length);
+      debugLog('📊 plotsData keys:', Object.keys(plotsData));
+      debugLog('📊 Full plotsData JSON:', JSON.stringify(plotsData, null, 2));
     }
   }, [plotsData]);
   
@@ -246,12 +254,12 @@ function ProjectsPageContent() {
   // Load selected plot IDs from cookies on component mount
   useEffect(() => {
     const savedSelections = getCookie('selectedPlotIds');
-    console.log('Loading from cookies:', savedSelections);
+    debugLog('Loading from cookies:', savedSelections);
     if (savedSelections) {
       try {
         const parsed = JSON.parse(savedSelections);
         if (Array.isArray(parsed)) {
-          console.log('Setting selectedPlotIds from cookies:', parsed);
+          debugLog('Setting selectedPlotIds from cookies:', parsed);
           setSelectedPlotIds(parsed);
           
           // Restore selection order with timestamps (older selections get earlier timestamps)
@@ -272,7 +280,7 @@ function ProjectsPageContent() {
   useEffect(() => {
     if (selectedPlotIds.length > 0) {
       setCookie('selectedPlotIds', JSON.stringify(selectedPlotIds));
-      console.log('Saved plot selections to cookies:', selectedPlotIds);
+      debugLog('Saved plot selections to cookies:', selectedPlotIds);
     }
   }, [selectedPlotIds]);
 
@@ -416,11 +424,11 @@ function ProjectsPageContent() {
   // Fetch agents for dropdown
   const fetchAgents = () => {
     try {
-      console.log('Fetching agents from', allProjects.length, 'projects');
+      debugLog('Fetching agents from', allProjects.length, 'projects');
       
       // Extract unique agents from all projects
       const allAgents = allProjects.map(project => project.Agent);
-      console.log('All agent values:', allAgents);
+      debugLog('All agent values:', allAgents);
       
       const uniqueAgents = Array.from(
         new Set(
@@ -430,7 +438,7 @@ function ProjectsPageContent() {
         )
       ).sort();
       
-      console.log('Unique agents found:', uniqueAgents);
+      debugLog('Unique agents found:', uniqueAgents);
       setAgents(uniqueAgents);
     } catch (err) {
       console.error('Error extracting agents:', err);
@@ -495,7 +503,7 @@ function ProjectsPageContent() {
 
     try {
       setPlotsLoading(true);
-      console.log('Fetching plots data with IDs:', selectedPlotIds);
+      debugLog('Fetching plots data with IDs:', selectedPlotIds);
       
       // Get ordered plot IDs based on selection timestamps
       const orderedPlotIds = plotSelections
@@ -506,7 +514,7 @@ function ProjectsPageContent() {
       const formattedPlotIds = orderedPlotIds.map(siteId => formatPlotIdForAPI(siteId)).filter(id => id);
       const plotIdsParam = formattedPlotIds.join(',');
       
-      console.log('Ordered plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
+      debugLog('Ordered plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
       
       const response = await makeAuthenticatedRequest(
         `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}&preserve_order=true`
@@ -514,7 +522,10 @@ function ProjectsPageContent() {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Received consolidated plots data:', data);
+        debugLog('Received consolidated plots data:', data);
+        debugLog('📊 RAW data.data.projects:', data.data?.projects);
+        debugLog('📊 First project structure:', data.data?.projects?.[0]);
+        debugLog('📊 First project.plots:', data.data?.projects?.[0]?.plots);
         
         // Set schema data from the response
         if (data.schema) {
@@ -628,7 +639,7 @@ function ProjectsPageContent() {
     
     // Wait 300ms for more selections before fetching
     loadDebounceTimer.current = setTimeout(() => {
-      console.log('Debounce timer fired, fetching plots');
+      debugLog('Debounce timer fired, fetching plots');
       pendingPlotIds.current.clear();
       // The useEffect will trigger fetchPlotsData when selectedPlotIds changes
     }, 300);
@@ -650,7 +661,7 @@ function ProjectsPageContent() {
   // Refresh plots data - useful for manual refresh
   const refreshPlotsData = async () => {
     if (selectedPlotIds.length > 0) {
-      console.log('Manually refreshing plots data for IDs:', selectedPlotIds);
+      debugLog('Manually refreshing plots data for IDs:', selectedPlotIds);
       await fetchPlotsData();
     }
   };
@@ -785,7 +796,7 @@ function ProjectsPageContent() {
         try {
           const parsed = JSON.parse(savedPlotIds);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            console.log('Found saved plot IDs in cookies, restoring:', parsed);
+            debugLog('Found saved plot IDs in cookies, restoring:', parsed);
             setSelectedPlotIds(parsed);
             // The useEffect for selectedPlotIds will handle the actual API call
           }
@@ -799,7 +810,7 @@ function ProjectsPageContent() {
   // Apply group-based filtering for Agent Peter users
   useEffect(() => {
     if (isAgentPeter && allProjects.length > 0) {
-      console.log('🔐 Agent Peter detected: Auto-applying filters');
+      debugLog('🔐 Agent Peter detected: Auto-applying filters');
       // Lock to "Peter Sladey - NMG Estonia" agent filter
       setSelectedAgent('Peter Sladey - NMG Estonia');
       // Partner filter stays empty (All Partners)
@@ -810,7 +821,7 @@ function ProjectsPageContent() {
   // Apply group-based filtering for Frost users
   useEffect(() => {
     if (isAgentfrost && allProjects.length > 0) {
-      console.log('🔐 Frost user detected: Auto-applying filters');
+      debugLog('🔐 Frost user detected: Auto-applying filters');
       // Lock to "Bifrost" partner filter
       setSelectedPartner('Bifrost');
       // Agent filter stays empty (All Agents)
@@ -821,7 +832,7 @@ function ProjectsPageContent() {
   // Apply group-based filtering for GiG users
   useEffect(() => {
     if (isAgentGiG && allProjects.length > 0) {
-      console.log('🔐 GiG user detected: Auto-applying filters');
+      debugLog('🔐 GiG user detected: Auto-applying filters');
       // Lock to "GIGA-42" partner filter
       setSelectedPartner('GIGA-42');
       // Agent filter stays empty (All Agents)
@@ -839,12 +850,12 @@ function ProjectsPageContent() {
 
   // Fetch plots data when selected plot IDs change
   useEffect(() => {
-    console.log('selectedPlotIds changed:', selectedPlotIds);
+    debugLog('selectedPlotIds changed:', selectedPlotIds);
     if (selectedPlotIds.length > 0 && session) {
-      console.log('Calling fetchPlotsData with:', selectedPlotIds);
+      debugLog('Calling fetchPlotsData with:', selectedPlotIds);
       fetchPlotsData();
     } else {
-      console.log('No plots selected or no session, clearing plotsData');
+      debugLog('No plots selected or no session, clearing plotsData');
       setPlotsData(null);
     }
   }, [selectedPlotIds, session]);
