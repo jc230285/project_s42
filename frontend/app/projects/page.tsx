@@ -143,8 +143,56 @@ function ProjectsPageContent() {
   const loadDebounceTimer = useRef<NodeJS.Timeout | null>(null);
   const pendingPlotIds = useRef<Set<string>>(new Set());
   
-  // Get user groups for role-based filtering
-  const userGroups = session ? getUserGroups(session) : [];
+  // State for user groups (will be fetched if not in session)
+  const [userGroupsState, setUserGroupsState] = useState<string[]>([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+  
+  // Fetch user groups if not in session
+  useEffect(() => {
+    const fetchUserGroups = async () => {
+      if (!session?.user?.email) {
+        setGroupsLoaded(true);
+        return;
+      }
+      
+      // Check if groups are already in session
+      const sessionGroups = getUserGroups(session);
+      if (sessionGroups.length > 0) {
+        console.log('Groups found in session:', sessionGroups);
+        setUserGroupsState(sessionGroups);
+        setGroupsLoaded(true);
+        return;
+      }
+      
+      // If no groups in session, fetch from backend
+      console.log('No groups in session, fetching from backend...');
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com';
+        const response = await fetch(`${backendUrl}/auth/user-groups/${encodeURIComponent(session.user.email)}`);
+        
+        if (response.ok) {
+          const userData = await response.json();
+          console.log('Fetched user groups from backend:', userData);
+          const groups = userData.groups ? userData.groups.map((g: any) => g.name) : [];
+          setUserGroupsState(groups);
+          console.log('Set user groups state:', groups);
+        } else {
+          console.error('Failed to fetch user groups:', response.status);
+          setUserGroupsState([]);
+        }
+      } catch (error) {
+        console.error('Error fetching user groups:', error);
+        setUserGroupsState([]);
+      } finally {
+        setGroupsLoaded(true);
+      }
+    };
+    
+    fetchUserGroups();
+  }, [session]);
+  
+  // Get user groups for role-based filtering - use state if available, fallback to session
+  const userGroups = userGroupsState.length > 0 ? userGroupsState : (session ? getUserGroups(session) : []);
   const isAgentPeter = userGroups.some(group => group.toLowerCase() === 'agent peter');
   const isAgentfrost = userGroups.some(group => group.toLowerCase() === 'frost');
   const isAgentGiG = userGroups.some(group => group.toLowerCase() === 'gig');
