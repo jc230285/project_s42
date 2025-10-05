@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Fetch pages from backend
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:8000';
+    // Fetch pages from backend (use server-side URL for container-to-container communication)
+    const backendUrl = process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:8000';
     const response = await fetch(
       `${backendUrl}/pages/user-mysql/${encodeURIComponent(email)}`,
       {
