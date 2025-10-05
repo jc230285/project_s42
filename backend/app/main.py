@@ -410,6 +410,8 @@ app.add_middleware(
         "http://localhost:3150",  # Docker frontend
         "http://localhost:8000",  # Dev backend
         "http://localhost:8150",  # Docker backend
+        "https://s42.edbmotte.com",  # Production frontend
+        "https://s42api.edbmotte.com",  # Production backend
         os.getenv('FRONTEND_BASE_URL', 'http://localhost:3150'),
         os.getenv('BACKEND_BASE_URL', 'http://localhost:8150')
     ],

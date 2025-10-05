@@ -32,7 +32,7 @@ export const authOptions: NextAuthOptions = {
         try {
           // Use the public auth endpoint that doesn't require authentication
           const backendUrl = process.env.NODE_ENV === 'production' 
-            ? 'https://s42api.edbmotte.com' 
+            ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
             : 'http://localhost:8000';
             
           console.log('JWT: Fetching user data from:', `${backendUrl}/auth/user-groups/${encodeURIComponent(email)}`);
@@ -84,7 +84,7 @@ export const authOptions: NextAuthOptions = {
             console.log('Session: Groups missing or empty, fetching from backend...');
             try {
               const backendUrl = process.env.NODE_ENV === 'production' 
-                ? 'https://s42api.edbmotte.com' 
+                ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
                 : 'http://localhost:8000';
                 
               console.log('Session: Fetching user data from:', `${backendUrl}/user-info/${encodeURIComponent(session.user.email)}`);
@@ -120,7 +120,7 @@ export const authOptions: NextAuthOptions = {
       if (user.email) {
         try {
           const backendUrl = process.env.NODE_ENV === 'production' 
-            ? 'https://s42api.edbmotte.com' 
+            ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
             : 'http://localhost:8000';
           
           // Check if user exists
