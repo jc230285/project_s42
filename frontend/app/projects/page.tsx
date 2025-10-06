@@ -256,11 +256,24 @@ function ProjectsPageContent() {
   const handleToggleActivityTimeline = (plotId: number) => {
     setCollapsedActivityTimelines(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(plotId)) {
-        newSet.delete(plotId);
+      
+      // Check if any activity timeline is currently expanded (not in the set)
+      const hasAnyExpanded = plotsData?.data?.projects?.some(project => 
+        project.plots?.some(plot => !prev.has(plot._db_id))
+      ) ?? false;
+      
+      if (hasAnyExpanded) {
+        // If any are expanded, collapse all
+        plotsData?.data?.projects?.forEach(project => {
+          project.plots?.forEach(plot => {
+            newSet.add(plot._db_id);
+          });
+        });
       } else {
-        newSet.add(plotId);
+        // If all are collapsed, expand all
+        newSet.clear();
       }
+      
       return newSet;
     });
   };
