@@ -2641,6 +2641,68 @@ async def get_nocodb_table_info(table_id: str, current_user: dict = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/nocodb/table/{table_id}/records", tags=["nocodb"])
+async def get_nocodb_table_records(table_id: str, current_user: dict = Depends(get_current_user)):
+    """Get table records from NocoDB"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        if current_user and current_user.get("authenticated"):
+            user_email = current_user.get("email")
+            if user_email:
+                try:
+                    conn = mysql.connector.connect(
+                        host=os.getenv("DB_HOST"),
+                        user=os.getenv("DB_USER"),
+                        password=os.getenv("DB_PASSWORD"),
+                        database=os.getenv("DB_NAME"),
+                        port=int(os.getenv("DB_PORT", 3306))
+                    )
+                    cursor = conn.cursor(dictionary=True)
+                    cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                    user_data = cursor.fetchone()
+                    if user_data and user_data.get('nocodb_api'):
+                        user_token = user_data['nocodb_api']
+                        print(f"✅ Using user-specific NocoDB token for {user_email}")
+                    else:
+                        print(f"⚠️ No user-specific token found for {user_email}, using admin token")
+                    cursor.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        if not api_token:
+            raise HTTPException(status_code=500, detail="No API token available")
+        
+        # NocoDB API endpoint for table records
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v2/tables/{table_id}/records"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token
+        }
+        
+        # Add query parameters to get all records
+        params = {
+            "limit": 1000,  # Increase limit to get more records
+            "offset": 0
+        }
+        
+        # Make the request
+        response = requests.get(nocodb_url, headers=headers, params=params, verify=False)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return {"success": True, "records": data.get("list", [])}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"NocoDB API error: {response.text}")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get('/api/map-data', tags=["Map"])
 def get_api_map_data(current_user: dict = Depends(get_current_user), partner: str = Query("all", description="Filter by Primary Project Partner")):
     """Get map visualization data with site locations and coordinates"""

@@ -6,7 +6,8 @@ import { Session } from 'next-auth';
 export function hasUserGroup(session: Session | null, groupName: string): boolean {
   if (!session?.user) return false;
   
-  const userGroups = (session as any).groups as string[] || [];
+  // Try both locations where groups might be stored
+  const userGroups = (session.user as any).groups as string[] || (session as any).groups as string[] || [];
   return userGroups.some(group => group.toLowerCase() === groupName.toLowerCase());
 }
 
