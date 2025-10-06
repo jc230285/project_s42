@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { hasUserGroup } from '@/lib/auth-utils';
 import toast from 'react-hot-toast';
+import { ExternalLink } from 'lucide-react';
 
 interface TableRecord {
   [key: string]: any;
@@ -99,6 +100,24 @@ export default function HomePage() {
     }
   };
 
+  // Format date as dd/mm/yyyy
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Truncate text to specified length
+  const truncateText = (text: string, maxLength: number = 30) => {
+    if (!text) return '-';
+    const str = String(text);
+    return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
+  };
+
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -158,52 +177,103 @@ export default function HomePage() {
                 <p className="text-muted-foreground">No data available</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-[50vh]">
                 <table className="min-w-full divide-y divide-border">
-                  <thead className="bg-muted">
+                  <thead className="bg-muted sticky top-0">
                     <tr>
-                      {Object.keys(tableData[0] || {})
-                        .filter(key => !['Id', 'CreatedAt', 'UpdatedAt', 'webViewLink'].includes(key))
-                        .map((key) => (
-                          <th
-                            key={key}
-                            className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
-                          >
-                            {key}
-                          </th>
-                        ))}
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Date
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        From
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Username
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Total Amount
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Company
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
                     {tableData.map((record, index) => (
-                      <tr key={index} className="hover:bg-accent">
-                        {Object.entries(record)
-                          .filter(([key]) => !['Id', 'CreatedAt', 'UpdatedAt', 'webViewLink'].includes(key))
-                          .map(([key, value]) => (
-                            <td key={key} className="px-6 py-4 text-sm text-foreground">
-                              {key === 'thumbnailLink' && value ? (
-                                <img 
-                                  src={String(value)} 
-                                  alt="Thumbnail" 
-                                  className="h-16 w-16 object-cover rounded"
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).style.display = 'none';
-                                  }}
-                                />
-                              ) : key === 'name' && record.webViewLink ? (
-                                <a 
-                                  href={String(record.webViewLink)} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 hover:underline"
-                                >
-                                  {value === null || value === undefined ? '-' : String(value)}
-                                </a>
-                              ) : (
-                                value === null || value === undefined ? '-' : String(value)
-                              )}
-                            </td>
-                          ))}
+                      <tr key={index} className="hover:bg-accent group">
+                        {/* Date */}
+                        <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
+                          {formatDate(record.invoiceDate)}
+                        </td>
+                        
+                        {/* From (truncated with link and tooltip) */}
+                        <td className="px-4 py-3 text-sm relative group/tooltip">
+                          {record.webViewLink ? (
+                            <a 
+                              href={String(record.webViewLink)} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                            >
+                              {truncateText(record.From, 25)}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            <span>{truncateText(record.From, 25)}</span>
+                          )}
+                          
+                          {/* Tooltip with full details */}
+                          {(record.name || record.shortDescription || record.invoiceNumber || record.To || record.card || record.dueDate || record.Project || record['Company Card Used'] || record['User Description']) && (
+                            <div className="invisible group-hover/tooltip:visible absolute z-10 left-0 top-full mt-1 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg">
+                              <div className="space-y-1">
+                                {record.name && (
+                                  <div><span className="font-semibold">Name:</span> {record.name}</div>
+                                )}
+                                {record.shortDescription && (
+                                  <div><span className="font-semibold">Description:</span> {record.shortDescription}</div>
+                                )}
+                                {record.invoiceNumber && (
+                                  <div><span className="font-semibold">Invoice #:</span> {record.invoiceNumber}</div>
+                                )}
+                                {record.To && (
+                                  <div><span className="font-semibold">To:</span> {record.To}</div>
+                                )}
+                                {record.card && (
+                                  <div><span className="font-semibold">Card:</span> {record.card}</div>
+                                )}
+                                {record.dueDate && (
+                                  <div><span className="font-semibold">Due Date:</span> {formatDate(record.dueDate)}</div>
+                                )}
+                                {record.Project && (
+                                  <div><span className="font-semibold">Project:</span> {record.Project}</div>
+                                )}
+                                {record['Company Card Used'] && (
+                                  <div><span className="font-semibold">Company Card:</span> {record['Company Card Used']}</div>
+                                )}
+                                {record['User Description'] && (
+                                  <div><span className="font-semibold">User Desc:</span> {record['User Description']}</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        
+                        {/* Username */}
+                        <td className="px-4 py-3 text-sm text-foreground">
+                          {record.username || '-'}
+                        </td>
+                        
+                        {/* Total Amount with Currency Code */}
+                        <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
+                          {record['Total Amount'] && record['Currency Code'] 
+                            ? `${record['Total Amount']} ${record['Currency Code']}`
+                            : record['Total Amount'] || '-'}
+                        </td>
+                        
+                        {/* Company */}
+                        <td className="px-4 py-3 text-sm text-foreground">
+                          {record.Company || '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
