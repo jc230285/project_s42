@@ -33,7 +33,7 @@ export const authOptions: NextAuthOptions = {
           // Use the public auth endpoint that doesn't require authentication
           const backendUrl = process.env.NODE_ENV === 'production' 
             ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
-            : 'http://localhost:8000';
+            : (process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:8000');
             
           console.log('JWT: Fetching user data from:', `${backendUrl}/auth/user-groups/${encodeURIComponent(email)}`);
           
@@ -85,7 +85,7 @@ export const authOptions: NextAuthOptions = {
             try {
               const backendUrl = process.env.NODE_ENV === 'production' 
                 ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
-                : 'http://localhost:8000';
+                : (process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:8000');
                 
               console.log('Session: Fetching user data from:', `${backendUrl}/user-info/${encodeURIComponent(session.user.email)}`);
               
@@ -121,7 +121,7 @@ export const authOptions: NextAuthOptions = {
         try {
           const backendUrl = process.env.NODE_ENV === 'production' 
             ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
-            : 'http://localhost:8000';
+            : (process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:8000');
           
           // Check if user exists
           const userInfoResponse = await fetch(`${backendUrl}/user-info/${encodeURIComponent(user.email)}`);
