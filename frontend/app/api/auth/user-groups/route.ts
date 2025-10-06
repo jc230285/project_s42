@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     // Fetch user groups from backend
     const backendUrl = process.env.NODE_ENV === 'production' 
       ? 'https://s42api.edbmotte.com' 
-      : 'http://backend:8000';
+      : process.env.BACKEND_BASE_URL || 'http://localhost:8150';
       
     const response = await fetch(`${backendUrl}/user-info/${encodeURIComponent(email)}`, {
       headers: { 'Authorization': 'Bearer internal-auth-check' }

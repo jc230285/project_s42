@@ -1,79 +1,103 @@
 
 "use client";
-import { useSession, signIn } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  LineChart, 
-  Line, 
-  ResponsiveContainer,
-  AreaChart,
-  Area
-} from 'recharts';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Zap, 
-  DollarSign, 
-  Users, 
-  Activity,
-  CheckCircle,
-  Clock,
-  AlertTriangle
-} from 'lucide-react';
+import { hasUserGroup } from '@/lib/auth-utils';
+import toast from 'react-hot-toast';
 
-// Sample data for charts
-const energyData = [
-  { month: 'Jan', solar: 4000, wind: 2400, hydro: 2400 },
-  { month: 'Feb', solar: 3000, wind: 1398, hydro: 2210 },
-  { month: 'Mar', solar: 2000, wind: 9800, hydro: 2290 },
-  { month: 'Apr', solar: 2780, wind: 3908, hydro: 2000 },
-  { month: 'May', solar: 1890, wind: 4800, hydro: 2181 },
-  { month: 'Jun', solar: 2390, wind: 3800, hydro: 2500 },
-];
+interface TableRecord {
+  [key: string]: any;
+}
 
-const pieData = [
-  { name: 'Solar', value: 400, color: '#8884d8' },
-  { name: 'Wind', value: 300, color: '#82ca9d' },
-  { name: 'Hydro', value: 200, color: '#ffc658' },
-  { name: 'Other', value: 100, color: '#ff7300' },
-];
-
-const performanceData = [
-  { time: '00:00', efficiency: 65 },
-  { time: '04:00', efficiency: 72 },
-  { time: '08:00', efficiency: 89 },
-  { time: '12:00', efficiency: 95 },
-  { time: '16:00', efficiency: 88 },
-  { time: '20:00', efficiency: 76 },
-];
-
-const timelineData = [
-  { id: 1, title: 'Project Alpha Initiated', time: '2 hours ago', status: 'completed' },
-  { id: 2, title: 'Site Survey Completed', time: '4 hours ago', status: 'completed' },
-  { id: 3, title: 'Environmental Assessment', time: '1 day ago', status: 'in-progress' },
-  { id: 4, title: 'Permit Application', time: '2 days ago', status: 'pending' },
-  { id: 5, title: 'Community Meeting', time: '3 days ago', status: 'completed' },
-];
-
-const recentProjects = [
-  { id: 'P001', name: 'Solar Farm Norway', status: 'Active', capacity: '150 MW', completion: 85 },
-  { id: 'P002', name: 'Wind Project Beta', status: 'Planning', capacity: '200 MW', completion: 30 },
-  { id: 'P003', name: 'Hydro Station Gamma', status: 'Active', capacity: '75 MW', completion: 92 },
-  { id: 'P004', name: 'Solar Rooftop Delta', status: 'Completed', capacity: '50 MW', completion: 100 },
-];
-
-export default function DashboardPage() {
+export default function HomePage() {
   const { data: session, status } = useSession();
+  const [tableData, setTableData] = useState<TableRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Check if user has Scale42 access
+  const hasScale42Access = hasUserGroup(session, 'Scale42');
+
+  console.log('🔍 HomePage Debug:', {
+    sessionStatus: status,
+    hasSession: !!session,
+    userEmail: session?.user?.email,
+    hasScale42Access,
+    userGroups: (session?.user as any)?.groups,
+  });
+
+  const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
+    if (!session?.user?.email) {
+      throw new Error('No session available');
+    }
+
+    const userInfo = {
+      email: session.user.email,
+      name: session.user.name || session.user.email,
+      image: session.user.image || ''
+    };
+
+    const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (hasScale42Access && status === "authenticated") {
+      fetchTableData();
+    }
+  }, [hasScale42Access, status]);
+
+  const fetchTableData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('📡 Fetching table data for Scale42 user...');
+
+      // Use the backend proxy to fetch table data
+      const response = await makeAuthenticatedRequest('/api/proxy/nocodb/table/msspusqx9ee9xkd');
+
+      console.log('📡 API Response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ API Error:', errorData);
+        throw new Error(`Failed to fetch table data: ${errorData.error || response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ API Response data:', data);
+      
+      let records = data.records || data.list || [];
+      
+      // Sort by invoiceDate (newest first)
+      records = records.sort((a: any, b: any) => {
+        const dateA = new Date(a.invoiceDate || 0);
+        const dateB = new Date(b.invoiceDate || 0);
+        return dateB.getTime() - dateA.getTime();
+      });
+      
+      console.log('📊 Records count:', records.length);
+
+      setTableData(records);
+    } catch (err) {
+      console.error('❌ Error fetching table data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch table data';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (status === "loading") {
     return (
@@ -86,45 +110,6 @@ export default function DashboardPage() {
     );
   }
 
-  if (!session) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-background to-secondary">
-        <header className="bg-card shadow-sm border-b border-border">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <img
-                  src="https://static.wixstatic.com/media/02157e_2734ffe4f4d44b319f9cc6c5f92628bf~mv2.png/v1/fill/w_506,h_128,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Scale42%20Logo%200_1%20-%20White%20-%202kpx.png"
-                  alt="Scale42 Logo"
-                  className="h-8 w-auto bg-muted px-2 py-1 rounded"
-                />
-              </div>
-              <button
-                className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                onClick={() => signIn("google")}
-              >
-                Sign In
-              </button>
-            </div>
-          </div>
-        </header>
-        
-        <main className="flex min-h-screen flex-col items-center justify-center px-4">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold text-foreground mb-4">Welcome to Scale42 Project Manager</h1>
-            <p className="text-xl text-muted-foreground mb-8">Manage your renewable energy projects with ease</p>
-            <button
-              className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-3 rounded-lg text-lg font-medium transition-colors shadow-lg"
-              onClick={() => signIn("google")}
-            >
-              Sign in with Google
-            </button>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -133,208 +118,116 @@ export default function DashboardPage() {
           <p className="mt-2 text-muted-foreground">Welcome to Scale42 - Your renewable energy command center</p>
         </div>
 
-        {/* Key Metrics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <div className="flex items-center justify-between">
+        {/* Scale42 Table Widget - Only visible to Scale42 group */}
+        {hasScale42Access && (
+          <div className="bg-card rounded-lg border border-border">
+            <div className="px-6 py-4 border-b border-border flex justify-between items-center">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Capacity</p>
-                <p className="text-2xl font-bold text-foreground">2,450 MW</p>
-                <p className="text-sm text-green-500 flex items-center mt-1">
-                  <TrendingUp className="w-4 h-4 mr-1" />
-                  +12.5% from last month
-                </p>
+                <h3 className="text-lg font-semibold text-foreground">Scale42 Data Table</h3>
+                <p className="text-sm text-muted-foreground">Full table data from NocoDB table: msspusqx9ee9xkd</p>
               </div>
-              <Zap className="h-8 w-8 text-blue-500" />
-            </div>
-          </div>
-
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Revenue</p>
-                <p className="text-2xl font-bold text-foreground">$8.2M</p>
-                <p className="text-sm text-green-500 flex items-center mt-1">
-                  <TrendingUp className="w-4 h-4 mr-1" />
-                  +8.1% from last month
-                </p>
-              </div>
-              <DollarSign className="h-8 w-8 text-green-500" />
-            </div>
-          </div>
-
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Projects</p>
-                <p className="text-2xl font-bold text-foreground">24</p>
-                <p className="text-sm text-red-500 flex items-center mt-1">
-                  <TrendingDown className="w-4 h-4 mr-1" />
-                  -2 from last month
-                </p>
-              </div>
-              <Activity className="h-8 w-8 text-orange-500" />
-            </div>
-          </div>
-
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Team Members</p>
-                <p className="text-2xl font-bold text-foreground">156</p>
-                <p className="text-sm text-green-500 flex items-center mt-1">
-                  <TrendingUp className="w-4 h-4 mr-1" />
-                  +5 new this month
-                </p>
-              </div>
-              <Users className="h-8 w-8 text-purple-500" />
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Energy Production Chart */}
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Energy Production by Source</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={energyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="solar" fill="#8884d8" />
-                <Bar dataKey="wind" fill="#82ca9d" />
-                <Bar dataKey="hydro" fill="#ffc658" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Energy Mix Pie Chart */}
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Energy Portfolio Mix</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}MW`}
+              {tableData.length > 0 && tableData[0]?.webViewLink && (
+                <a
+                  href={String(tableData[0].webViewLink)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                 >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+                  View in Drive
+                </a>
+              )}
+            </div>
 
-        {/* Performance and Timeline */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Performance Chart */}
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <h3 className="text-lg font-semibold text-foreground mb-4">System Efficiency (24h)</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={performanceData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="efficiency" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {loading ? (
+              <div className="p-6 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                <p className="mt-2 text-muted-foreground">Loading table data...</p>
+              </div>
+            ) : error ? (
+              <div className="p-6 text-center">
+                <p className="text-red-500">Error: {error}</p>
+                <button
+                  onClick={fetchTableData}
+                  className="mt-2 px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : tableData.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-muted-foreground">No data available</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-muted">
+                    <tr>
+                      {Object.keys(tableData[0] || {})
+                        .filter(key => !['Id', 'CreatedAt', 'UpdatedAt', 'webViewLink'].includes(key))
+                        .map((key) => (
+                          <th
+                            key={key}
+                            className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                          >
+                            {key}
+                          </th>
+                        ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-card divide-y divide-border">
+                    {tableData.map((record, index) => (
+                      <tr key={index} className="hover:bg-accent">
+                        {Object.entries(record)
+                          .filter(([key]) => !['Id', 'CreatedAt', 'UpdatedAt', 'webViewLink'].includes(key))
+                          .map(([key, value]) => (
+                            <td key={key} className="px-6 py-4 text-sm text-foreground">
+                              {key === 'thumbnailLink' && value ? (
+                                <img 
+                                  src={String(value)} 
+                                  alt="Thumbnail" 
+                                  className="h-16 w-16 object-cover rounded"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              ) : key === 'name' && record.webViewLink ? (
+                                <a 
+                                  href={String(record.webViewLink)} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                                >
+                                  {value === null || value === undefined ? '-' : String(value)}
+                                </a>
+                              ) : (
+                                value === null || value === undefined ? '-' : String(value)
+                              )}
+                            </td>
+                          ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
+        )}
 
-          {/* Activity Timeline */}
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Recent Activity</h3>
-            <div className="space-y-4">
-              {timelineData.map((item) => (
-                <div key={item.id} className="flex items-start space-x-3">
-                  <div className="flex-shrink-0">
-                    {item.status === 'completed' && <CheckCircle className="w-5 h-5 text-green-500" />}
-                    {item.status === 'in-progress' && <Clock className="w-5 h-5 text-blue-500" />}
-                    {item.status === 'pending' && <AlertTriangle className="w-5 h-5 text-yellow-500" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{item.title}</p>
-                    <p className="text-sm text-muted-foreground">{item.time}</p>
-                  </div>
-                </div>
-              ))}
+        {/* Public content for all users */}
+        {!hasScale42Access && (
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-semibold text-foreground mb-4">Welcome to Scale42</h2>
+            <p className="text-muted-foreground">
+              Your renewable energy command center. Please sign in to access the dashboard.
+            </p>
+            <div className="mt-4 p-4 bg-yellow-100 text-yellow-800 rounded">
+              <p className="text-sm">Debug: {status === 'authenticated' ? `Logged in as ${session?.user?.email}, but no Scale42 access` : 'Not logged in'}</p>
+              {status === 'authenticated' && (
+                <p className="text-xs mt-2">Groups: {JSON.stringify((session?.user as any)?.groups || 'None')}</p>
+              )}
             </div>
           </div>
-        </div>
-
-        {/* Recent Projects Table */}
-        <div className="bg-card rounded-lg border border-border">
-          <div className="px-6 py-4 border-b border-border">
-            <h3 className="text-lg font-semibold text-foreground">Recent Projects</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Project ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Capacity
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Completion
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-card divide-y divide-border">
-                {recentProjects.map((project) => (
-                  <tr key={project.id} className="hover:bg-accent">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                      {project.id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      {project.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        project.status === 'Active' ? 'bg-green-100 text-green-800' :
-                        project.status === 'Planning' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
-                        {project.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      {project.capacity}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                      <div className="flex items-center">
-                        <div className="w-full bg-muted rounded-full h-2 mr-2">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full" 
-                            style={{ width: `${project.completion}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-sm font-medium">{project.completion}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        )}
       </div>
     </DashboardLayout>
   );

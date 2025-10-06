@@ -1,11 +1,29 @@
 "use client";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { PlotDisplay } from './PlotDisplay';
-import { WithScale42Access } from '@/components/WithScale42Access';
+import { WithPageAccess } from '@/components/WithPageAccess';
+import { getUserGroups } from '@/lib/auth-utils';
+import toast from 'react-hot-toast';
+
+// Debug mode from environment
+const DEBUG_MODE = process.env.NEXT_PUBLIC_DEBUG_MODE === 'true';
+const debugLog = (...args: any[]) => {
+  if (DEBUG_MODE) {
+    debugLog(...args);
+  }
+};
+
+debugLog('📄 projects/page.tsx: File loaded');
+
+// Track plot selections with timestamps for order preservation
+interface PlotSelection {
+  id: string;
+  selectedAt: number;
+}
 
 interface PlotData {
   raw: string;
@@ -24,6 +42,9 @@ interface ProjectData {
   "Power Availability (Min)"?: string;
   "Power Availability (Max)"?: string;
   "Primary Project Partner"?: string;
+  "Project Priority"?: number; // Updated field name
+  "Status"?: string; // Updated field name
+  "Agent"?: string; // Updated field name
 }
 
 interface ProjectsResponse {
@@ -100,30 +121,111 @@ interface PlotsResponse {
 }
 
 export default function ProjectsPage() {
+  debugLog('📄 ProjectsPage: Component rendering');
   return (
-    // <WithScale42Access>
+    <WithPageAccess pagePath="/projects">
       <ProjectsPageContent />
-    // </WithScale42Access>
+    </WithPageAccess>
   );
 }
 
 function ProjectsPageContent() {
+  debugLog('📄 ProjectsPageContent: Component rendering');
   const { data: session, status } = useSession();
   const router = useRouter();
   const [allProjects, setAllProjects] = useState<ProjectData[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectData[]>([]);
   const [projectPartners, setProjectPartners] = useState<string[]>([]);
   const [selectedPartner, setSelectedPartner] = useState<string>('');
+  const [agents, setAgents] = useState<string[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedPlotIds, setSelectedPlotIds] = useState<string[]>([]);  // Changed from selectedProjectIds
+  const [plotSelections, setPlotSelections] = useState<PlotSelection[]>([]); // Track selection order
   const [plotsData, setPlotsData] = useState<PlotsResponse | null>(null);
   const [plotsLoading, setPlotsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [schemaData, setSchemaData] = useState<any[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
   
-  // Sidebar state for filters
+  // Debounce timer for batch loading
+  const loadDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const pendingPlotIds = useRef<Set<string>>(new Set());
+  
+  // State for user groups (will be fetched if not in session)
+  const [userGroupsState, setUserGroupsState] = useState<string[]>([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+  
+  // Fetch user groups if not in session
+  useEffect(() => {
+    const fetchUserGroups = async () => {
+      if (!session?.user?.email) {
+        setGroupsLoaded(true);
+        return;
+      }
+      
+      // Check if groups are already in session
+      const sessionGroups = getUserGroups(session);
+      if (sessionGroups.length > 0) {
+        debugLog('Groups found in session:', sessionGroups);
+        setUserGroupsState(sessionGroups);
+        setGroupsLoaded(true);
+        return;
+      }
+      
+      // If no groups in session, fetch from backend
+      debugLog('No groups in session, fetching from backend...');
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com';
+        const response = await fetch(`${backendUrl}/auth/user-groups/${encodeURIComponent(session.user.email)}`);
+        
+        if (response.ok) {
+          const userData = await response.json();
+          debugLog('Fetched user groups from backend:', userData);
+          const groups = userData.groups ? userData.groups.map((g: any) => g.name) : [];
+          setUserGroupsState(groups);
+          debugLog('Set user groups state:', groups);
+        } else {
+          console.error('Failed to fetch user groups:', response.status);
+          setUserGroupsState([]);
+        }
+      } catch (error) {
+        console.error('Error fetching user groups:', error);
+        setUserGroupsState([]);
+      } finally {
+        setGroupsLoaded(true);
+      }
+    };
+    
+    fetchUserGroups();
+  }, [session]);
+  
+  // Debug: Log plotsData structure when it changes
+  useEffect(() => {
+    if (plotsData) {
+      debugLog('📊 plotsData structure:', plotsData);
+      debugLog('📊 plotsData.plots:', plotsData.plots);
+      debugLog('📊 plotsData.plots length:', plotsData.plots?.length);
+      debugLog('📊 plotsData keys:', Object.keys(plotsData));
+      debugLog('📊 Full plotsData JSON:', JSON.stringify(plotsData, null, 2));
+    }
+  }, [plotsData]);
+  
+  // Get user groups for role-based filtering - use state if available, fallback to session
+  const userGroups = userGroupsState.length > 0 ? userGroupsState : (session ? getUserGroups(session) : []);
+  const isAgentPeter = userGroups.some(group => group.toLowerCase() === 'agent peter');
+  const isAgentfrost = userGroups.some(group => group.toLowerCase() === 'frost');
+  const isAgentGiG = userGroups.some(group => group.toLowerCase() === 'gig');
+  
+  // Sidebar state for filters - automatically open when no sites are selected
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Effect to automatically open sidebar when no plots are selected
+  useEffect(() => {
+    if (selectedPlotIds.length === 0) {
+      setSidebarOpen(true);
+    }
+  }, [selectedPlotIds]);
   
   const [error, setError] = useState<string | null>(null);
 
@@ -153,13 +255,21 @@ function ProjectsPageContent() {
   // Load selected plot IDs from cookies on component mount
   useEffect(() => {
     const savedSelections = getCookie('selectedPlotIds');
-    console.log('Loading from cookies:', savedSelections);
+    debugLog('Loading from cookies:', savedSelections);
     if (savedSelections) {
       try {
         const parsed = JSON.parse(savedSelections);
         if (Array.isArray(parsed)) {
-          console.log('Setting selectedPlotIds from cookies:', parsed);
+          debugLog('Setting selectedPlotIds from cookies:', parsed);
           setSelectedPlotIds(parsed);
+          
+          // Restore selection order with timestamps (older selections get earlier timestamps)
+          const baseTime = Date.now() - (parsed.length * 1000); // Space selections 1 second apart
+          const selections: PlotSelection[] = parsed.map((id, index) => ({
+            id,
+            selectedAt: baseTime + (index * 1000)
+          }));
+          setPlotSelections(selections);
         }
       } catch (error) {
         console.error('Failed to parse saved plot selections from cookies:', error);
@@ -171,7 +281,7 @@ function ProjectsPageContent() {
   useEffect(() => {
     if (selectedPlotIds.length > 0) {
       setCookie('selectedPlotIds', JSON.stringify(selectedPlotIds));
-      console.log('Saved plot selections to cookies:', selectedPlotIds);
+      debugLog('Saved plot selections to cookies:', selectedPlotIds);
     }
   }, [selectedPlotIds]);
 
@@ -256,25 +366,14 @@ function ProjectsPageContent() {
   const handleToggleActivityTimeline = (plotId: number) => {
     setCollapsedActivityTimelines(prev => {
       const newSet = new Set(prev);
-      
-      // Check if any activity timeline is currently expanded (not in the set)
-      const hasAnyExpanded = plotsData?.data?.projects?.some(project => 
-        project.plots?.some(plot => !prev.has(plot._db_id))
-      ) ?? false;
-      
-      if (hasAnyExpanded) {
-        // If any are expanded, collapse all
-        plotsData?.data?.projects?.forEach(project => {
-          project.plots?.forEach(plot => {
-            newSet.add(plot._db_id);
-          });
-        });
+      if (newSet.has(plotId)) {
+        // If this plot is collapsed, expand all plots (clear the set)
+        return new Set();
       } else {
-        // If all are collapsed, expand all
-        newSet.clear();
+        // If this plot is expanded, collapse all plots (add all plot IDs)
+        const allPlotIds = plotsData?.plots?.map((plot: any) => plot.id) || [];
+        return new Set(allPlotIds);
       }
-      
-      return newSet;
     });
   };
 
@@ -312,7 +411,7 @@ function ProjectsPageContent() {
   const fetchProjectPartners = async () => {
     try {
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/project-partners`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/project-partners`
       );
       if (response.ok) {
         const data: ProjectPartnersResponse = await response.json();
@@ -323,6 +422,30 @@ function ProjectsPageContent() {
     }
   };
 
+  // Fetch agents for dropdown
+  const fetchAgents = () => {
+    try {
+      debugLog('Fetching agents from', allProjects.length, 'projects');
+      
+      // Extract unique agents from all projects
+      const allAgents = allProjects.map(project => project.Agent);
+      debugLog('All agent values:', allAgents);
+      
+      const uniqueAgents = Array.from(
+        new Set(
+          allProjects
+            .map(project => project.Agent)
+            .filter((agent): agent is string => agent !== undefined && agent !== null && agent.trim() !== '')
+        )
+      ).sort();
+      
+      debugLog('Unique agents found:', uniqueAgents);
+      setAgents(uniqueAgents);
+    } catch (err) {
+      console.error('Error extracting agents:', err);
+    }
+  };
+
   // Fetch all projects
   const fetchAllProjects = async () => {
     try {
@@ -330,7 +453,7 @@ function ProjectsPageContent() {
       setError(null);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/projects`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/projects`
       );
       
       if (response.ok) {
@@ -355,7 +478,7 @@ function ProjectsPageContent() {
     try {
       setSchemaLoading(true);
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/schema`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/schema`
       );
       
       if (response.ok) {
@@ -372,6 +495,7 @@ function ProjectsPageContent() {
   };
 
   // Fetch plots data based on selected plot IDs - using consolidated backend endpoint
+  // Ordered by selection time for better UX
   const fetchPlotsData = async () => {
     if (selectedPlotIds.length === 0) {
       setPlotsData(null);
@@ -380,21 +504,29 @@ function ProjectsPageContent() {
 
     try {
       setPlotsLoading(true);
-      console.log('Fetching plots data with IDs:', selectedPlotIds);
+      debugLog('Fetching plots data with IDs:', selectedPlotIds);
+      
+      // Get ordered plot IDs based on selection timestamps
+      const orderedPlotIds = plotSelections
+        .sort((a, b) => a.selectedAt - b.selectedAt)
+        .map(sel => sel.id);
       
       // Convert S### format to numeric format for API (S013 -> 013, S001 -> 001)
-      const formattedPlotIds = selectedPlotIds.map(siteId => formatPlotIdForAPI(siteId)).filter(id => id);
+      const formattedPlotIds = orderedPlotIds.map(siteId => formatPlotIdForAPI(siteId)).filter(id => id);
       const plotIdsParam = formattedPlotIds.join(',');
       
-      console.log('Converted plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
+      debugLog('Ordered plot IDs for API:', formattedPlotIds, 'param:', plotIdsParam);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}`
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/projects/plots?plot_ids=${encodeURIComponent(plotIdsParam)}&preserve_order=true`
       );
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Received consolidated plots data:', data);
+        debugLog('Received consolidated plots data:', data);
+        debugLog('📊 RAW data.data.projects:', data.data?.projects);
+        debugLog('📊 First project structure:', data.data?.projects?.[0]);
+        debugLog('📊 First project.plots:', data.data?.projects?.[0]?.plots);
         
         // Set schema data from the response
         if (data.schema) {
@@ -473,8 +605,10 @@ function ProjectsPageContent() {
     return parseInt(numericId, 10).toString(); // Convert to number then back to string to remove leading zeros
   };
 
-  // Handle plot selection (store full S### format)
+  // Handle plot selection (store full S### format with timestamp for ordering)
   const handlePlotSelection = (siteId: string, isSelected: boolean) => {
+    const now = Date.now();
+    
     setSelectedPlotIds(prev => {
       if (isSelected) {
         return [...prev, siteId]; // Store full site ID like "S013"
@@ -482,12 +616,45 @@ function ProjectsPageContent() {
         return prev.filter(id => id !== siteId);
       }
     });
+    
+    setPlotSelections(prev => {
+      if (isSelected) {
+        // Add new selection with current timestamp
+        return [...prev, { id: siteId, selectedAt: now }];
+      } else {
+        // Remove from selections
+        return prev.filter(sel => sel.id !== siteId);
+      }
+    });
+    
+    // Debounce the actual data fetch to batch rapid selections
+    if (loadDebounceTimer.current) {
+      clearTimeout(loadDebounceTimer.current);
+    }
+    
+    if (isSelected) {
+      pendingPlotIds.current.add(siteId);
+    } else {
+      pendingPlotIds.current.delete(siteId);
+    }
+    
+    // Wait 300ms for more selections before fetching
+    loadDebounceTimer.current = setTimeout(() => {
+      debugLog('Debounce timer fired, fetching plots');
+      pendingPlotIds.current.clear();
+      // The useEffect will trigger fetchPlotsData when selectedPlotIds changes
+    }, 300);
   };
 
   // Clear plot selection
   const clearPlotSelection = () => {
     setSelectedPlotIds([]);
+    setPlotSelections([]);
     setPlotsData(null);
+    pendingPlotIds.current.clear();
+    if (loadDebounceTimer.current) {
+      clearTimeout(loadDebounceTimer.current);
+    }
     // Clear from cookies too
     setCookie('selectedPlotIds', '[]');
   };
@@ -495,8 +662,53 @@ function ProjectsPageContent() {
   // Refresh plots data - useful for manual refresh
   const refreshPlotsData = async () => {
     if (selectedPlotIds.length > 0) {
-      console.log('Manually refreshing plots data for IDs:', selectedPlotIds);
+      debugLog('Manually refreshing plots data for IDs:', selectedPlotIds);
       await fetchPlotsData();
+    }
+  };
+
+  // Handle status update for project
+  const handleStatusUpdate = async (projectId: number, newStatus: string) => {
+    if (!session?.user?.email) {
+      toast.error('No session available');
+      return;
+    }
+
+    try {
+      const userInfo = {
+        email: session.user.email,
+        name: session.user.name || session.user.email,
+        image: session.user.image || ""
+      };
+      const authHeader = `Bearer ${btoa(JSON.stringify(userInfo))}`;
+
+      const response = await fetch('/api/proxy/nocodb/update-row', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify({
+          table_id: 'mftsk8hkw23m8q1', // Projects table ID
+          row_id: projectId,
+          field_data: {
+            'c5l916pwjdtz3tk': newStatus // Status field ID
+          }
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`Status updated to: ${newStatus}`);
+        // Refresh the projects list to show the updated status
+        await fetchAllProjects();
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        toast.error(errorData.detail || `Failed to update status (${response.status})`);
+        console.error('Error details:', response.status, errorData);
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Failed to update status. Check console for details.');
     }
   };
 
@@ -511,6 +723,13 @@ function ProjectsPageContent() {
       );
     }
 
+    // Filter by agent
+    if (selectedAgent) {
+      filtered = filtered.filter(project => 
+        project.Agent === selectedAgent
+      );
+    }
+
     // Filter by search term
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
@@ -518,7 +737,8 @@ function ProjectsPageContent() {
         const searchableFields = [
           project["Project Name"] || "",
           project.Country || "",
-          project["Primary Project Partner"] || ""
+          project["Primary Project Partner"] || "",
+          project.Agent || ""
         ];
         return searchableFields.some(field => 
           field.toLowerCase().includes(searchLower)
@@ -526,17 +746,86 @@ function ProjectsPageContent() {
       });
     }
 
+    // Sort by Project Priority - higher priority first
+    filtered.sort((a, b) => {
+      const priorityA = a["Project Priority"] || 0;
+      const priorityB = b["Project Priority"] || 0;
+      return priorityB - priorityA; // Descending order (higher priority first)
+    });
+
     setFilteredProjects(filtered);
   };
 
   // Handle partner filter change
   const handlePartnerFilter = (partner: string) => {
     setSelectedPartner(partner);
+    
+    // Clear selected plots that don't belong to projects matching the filters
+    if (selectedPlotIds.length > 0) {
+      let filteredProjects = allProjects;
+      
+      // Apply partner filter
+      if (partner) {
+        filteredProjects = filteredProjects.filter(project => 
+          project["Primary Project Partner"] === partner
+        );
+      }
+      
+      // Apply existing agent filter
+      if (selectedAgent) {
+        filteredProjects = filteredProjects.filter(project => 
+          project.Agent === selectedAgent
+        );
+      }
+      
+      // Get valid plot IDs from filtered projects
+      const validPlotIds = filteredProjects
+        .flatMap(project => project.P_PlotID || [])
+        .map(plot => plot.site_id);
+      
+      setSelectedPlotIds(prev => 
+        prev.filter(plotId => validPlotIds.includes(plotId))
+      );
+    }
+  };
+
+  // Handle agent filter change
+  const handleAgentFilter = (agent: string) => {
+    setSelectedAgent(agent);
+    
+    // Clear selected plots that don't belong to projects matching the filters
+    if (selectedPlotIds.length > 0) {
+      let filteredProjects = allProjects;
+      
+      // Apply existing partner filter
+      if (selectedPartner) {
+        filteredProjects = filteredProjects.filter(project => 
+          project["Primary Project Partner"] === selectedPartner
+        );
+      }
+      
+      // Apply agent filter
+      if (agent) {
+        filteredProjects = filteredProjects.filter(project => 
+          project.Agent === agent
+        );
+      }
+      
+      // Get valid plot IDs from filtered projects
+      const validPlotIds = filteredProjects
+        .flatMap(project => project.P_PlotID || [])
+        .map(plot => plot.site_id);
+      
+      setSelectedPlotIds(prev => 
+        prev.filter(plotId => validPlotIds.includes(plotId))
+      );
+    }
   };
 
   // Clear all filters
   const clearFilters = () => {
     setSelectedPartner("");
+    setSelectedAgent("");
     setSearchTerm("");
   };
 
@@ -553,7 +842,7 @@ function ProjectsPageContent() {
         try {
           const parsed = JSON.parse(savedPlotIds);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            console.log('Found saved plot IDs in cookies, restoring:', parsed);
+            debugLog('Found saved plot IDs in cookies, restoring:', parsed);
             setSelectedPlotIds(parsed);
             // The useEffect for selectedPlotIds will handle the actual API call
           }
@@ -564,21 +853,55 @@ function ProjectsPageContent() {
     }
   }, [session]);
 
+  // Apply group-based filtering for Agent Peter users
+  useEffect(() => {
+    if (isAgentPeter && allProjects.length > 0) {
+      debugLog('🔐 Agent Peter detected: Auto-applying filters');
+      // Lock to "Peter Sladey - NMG Estonia" agent filter
+      setSelectedAgent('Peter Sladey - NMG Estonia');
+      // Partner filter stays empty (All Partners)
+      setSelectedPartner('');
+    }
+  }, [isAgentPeter, allProjects.length]);
+
+  // Apply group-based filtering for Frost users
+  useEffect(() => {
+    if (isAgentfrost && allProjects.length > 0) {
+      debugLog('🔐 Frost user detected: Auto-applying filters');
+      // Lock to "Bifrost" partner filter
+      setSelectedPartner('Bifrost');
+      // Agent filter stays empty (All Agents)
+      setSelectedAgent('');
+    }
+  }, [isAgentfrost, allProjects.length]);
+
+  // Apply group-based filtering for GiG users
+  useEffect(() => {
+    if (isAgentGiG && allProjects.length > 0) {
+      debugLog('🔐 GiG user detected: Auto-applying filters');
+      // Lock to "GIGA-42" partner filter
+      setSelectedPartner('GIGA-42');
+      // Agent filter stays empty (All Agents)
+      setSelectedAgent('');
+    }
+  }, [isAgentGiG, allProjects.length]);
+
   // Filter projects when filters change
   useEffect(() => {
     if (allProjects.length > 0) {
+      fetchAgents(); // Extract agents when projects are loaded
       filterProjects();
     }
-  }, [selectedPartner, searchTerm, allProjects]);
+  }, [selectedPartner, selectedAgent, searchTerm, allProjects]);
 
   // Fetch plots data when selected plot IDs change
   useEffect(() => {
-    console.log('selectedPlotIds changed:', selectedPlotIds);
+    debugLog('selectedPlotIds changed:', selectedPlotIds);
     if (selectedPlotIds.length > 0 && session) {
-      console.log('Calling fetchPlotsData with:', selectedPlotIds);
+      debugLog('Calling fetchPlotsData with:', selectedPlotIds);
       fetchPlotsData();
     } else {
-      console.log('No plots selected or no session, clearing plotsData');
+      debugLog('No plots selected or no session, clearing plotsData');
       setPlotsData(null);
     }
   }, [selectedPlotIds, session]);
@@ -703,6 +1026,7 @@ function ProjectsPageContent() {
                               onToggleSubcategory={handleToggleSubcategory}
                               collapsedActivityTimelines={collapsedActivityTimelines}
                               onToggleActivityTimeline={handleToggleActivityTimeline}
+                              onDataUpdate={refreshPlotsData}
                             />
                           );
                         });
@@ -731,34 +1055,15 @@ function ProjectsPageContent() {
           />
           
           {/* Sidebar */}
-          <div className="absolute right-0 top-0 h-full w-96 bg-background border-l border-border shadow-xl overflow-y-auto">
-            {/* Sidebar Header */}
-            <div className="sticky top-0 bg-background border-b border-border p-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Filters & Plot Selection</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSidebarOpen(false)}
-                className="h-8 w-8 p-0"
-              >
-                ✕
-              </Button>
-            </div>
+          <div className="absolute right-0 top-0 h-full w-96 md:w-1/2 md:min-w-96 bg-background border-l border-border shadow-xl overflow-y-auto custom-scrollbar">
+
 
             {/* Sidebar Content */}
-            <div className="p-4 space-y-6">
+            <div className="p-4 h-full flex flex-col">
               {/* Filtering Controls */}
-              <div>
-                <h3 className="text-md font-medium text-foreground mb-4">Filters</h3>
-                <div className="space-y-4">
-                  {/* Total Projects Display */}
-                  <div className="text-sm text-muted-foreground">
-                    {allProjects.length > 0 && (
-                      <>Total: {allProjects.length} projects</>
-                    )}
-                  </div>
-
-                  {/* Partner Dropdown */}
+              <div className="space-y-4 mb-6">
+                {/* Partner Dropdown - Hidden for Agent Peter, Frost, and GiG */}
+                {!isAgentPeter && !isAgentfrost && !isAgentGiG && (
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Project Partner
@@ -776,22 +1081,75 @@ function ProjectsPageContent() {
                       ))}
                     </select>
                   </div>
+                )}
 
-                  {/* Search Input */}
+                {/* Agent Dropdown - Hidden for Agent Peter, Frost, and GiG */}
+                {!isAgentPeter && !isAgentfrost && !isAgentGiG && (
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
-                      Search Projects
+                      Agent
                     </label>
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Search by name, country, partner..."
+                    <select
+                      value={selectedAgent}
+                      onChange={(e) => handleAgentFilter(e.target.value)}
                       className="w-full p-2 border border-border rounded-md bg-background text-foreground"
-                    />
+                    >
+                      <option value="">All Agents</option>
+                      {agents.map((agent) => (
+                        <option key={agent} value={agent}>
+                          {agent}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                )}
 
-                  {/* Clear Filters */}
+                {/* Show active filters for Agent Peter users */}
+                {isAgentPeter && (
+                  <div className="bg-accent/50 border border-border rounded-md p-3">
+                    <p className="text-sm font-medium text-foreground mb-2">Active Filters:</p>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>• Agent: <span className="text-foreground">Peter Sladey - NMG Estonia</span></p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show active filters for Frost users */}
+                {isAgentfrost && (
+                  <div className="bg-accent/50 border border-border rounded-md p-3">
+                    <p className="text-sm font-medium text-foreground mb-2">Active Filters:</p>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>• Partner: <span className="text-foreground">Bifrost</span></p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show active filters for GiG users */}
+                {isAgentGiG && (
+                  <div className="bg-accent/50 border border-border rounded-md p-3">
+                    <p className="text-sm font-medium text-foreground mb-2">Active Filters:</p>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>• Partner: <span className="text-foreground">GIGA-42</span></p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Input */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Search Projects
+                  </label>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by name, country, partner, agent..."
+                    className="w-full p-2 border border-border rounded-md bg-background text-foreground"
+                  />
+                </div>
+
+                {/* Clear Filters - Only show search clear for Agent Peter, Frost, and GiG */}
+                {!isAgentPeter && !isAgentfrost && !isAgentGiG && (
                   <Button
                     onClick={clearFilters}
                     variant="outline"
@@ -799,16 +1157,25 @@ function ProjectsPageContent() {
                   >
                     Clear Filters
                   </Button>
-                </div>
+                )}
+                {(isAgentPeter || isAgentfrost || isAgentGiG) && searchTerm && (
+                  <Button
+                    onClick={() => setSearchTerm('')}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    Clear Search
+                  </Button>
+                )}
               </div>
 
               {/* Plot Selection Section */}
-              <div>
+              <div className="flex flex-col flex-1 min-h-0">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-md font-medium text-foreground">Plot Selection</h3>
                   {selectedPlotIds.length > 0 && (
                     <Button onClick={clearPlotSelection} variant="outline" size="sm">
-                      Clear ({selectedPlotIds.length})
+                      Clear Plot Selection ({selectedPlotIds.length})
                     </Button>
                   )}
                 </div>
@@ -816,8 +1183,9 @@ function ProjectsPageContent() {
                 <div className="text-sm text-muted-foreground mb-4">
                   {!loading && filteredProjects.length > 0 && (
                     <>
-                      Showing {filteredProjects.length} of {allProjects.length} projects
+                      Showing {filteredProjects.length} projects
                       {selectedPartner && ` • Partner: ${selectedPartner}`}
+                      {selectedAgent && ` • Agent: ${selectedAgent}`}
                       {searchTerm && ` • Search: "${searchTerm}"`}
                     </>
                   )}
@@ -861,59 +1229,97 @@ function ProjectsPageContent() {
 
                 {/* Projects List for Selection */}
                 {!loading && filteredProjects.length > 0 && (
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar">
                     {filteredProjects.map((project: ProjectData) => (
                       <div 
                         key={project.Id}
-                        className="bg-muted/30 rounded-lg border border-border p-3"
+                        className="bg-muted/30 rounded-lg border border-border p-1"
                       >
-                        {/* Project Header */}
-                        <div className="mb-2">
-                          <div className="flex items-center gap-2 flex-wrap text-sm">
-                            {/* Project ID */}
-                            {project.P_PlotID && project.P_PlotID.length > 0 && (() => {
-                              const projectIds = [...new Set(project.P_PlotID.map(plot => plot.project_id).filter(Boolean))];
-                              return projectIds.length > 0 && (
-                                <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full border border-green-200 dark:bg-green-900 dark:text-green-200">
-                                  {projectIds[0]}
-                                </span>
-                              );
-                            })()}
+
                             
-                            {/* Country Badge */}
-                            {project.Country && (
-                              <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
-                                {project.Country}
-                              </span>
-                            )}
-                          </div>
-                          
-                          <div className="font-medium text-foreground text-sm mt-1">
-                            {project['Project Name']}
-                          </div>
-                        </div>
                         
-                        {/* Plots */}
+                        {/* Plots - Now Clickable */}
                         {project.P_PlotID && project.P_PlotID.length > 0 && (
                           <div className="space-y-2">
                             {project.P_PlotID.map((plot, index) => (
                               <div 
                                 key={index}
-                                className="bg-background/60 rounded-md p-2 border border-border/30"
+                                onClick={() => handlePlotSelection(plot.site_id, !selectedPlotIds.includes(plot.site_id))}
+                                className={`rounded-md p-1 border cursor-pointer transition-all duration-200 ${
+                                  selectedPlotIds.includes(plot.site_id)
+                                    ? 'bg-primary/10 border-primary/50 shadow-md'
+                                    : 'bg-background/60 border-border/30 hover:bg-background/80 hover:border-border/60'
+                                }`}
                               >
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedPlotIds.includes(plot.site_id)}
-                                    onChange={(e) => handlePlotSelection(plot.site_id, e.target.checked)}
-                                    className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-primary"
-                                  />
-                                  <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200">
-                                    {plot.site_id}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {plot.plot_name}
-                                  </span>
+                                <div className="flex items-center gap-3">
+                                  {/* Selection Indicator */}
+                                  <div className={`w-4 h-4 rounded-full border-2 transition-all duration-200 ${
+                                    selectedPlotIds.includes(plot.site_id)
+                                      ? 'bg-primary border-primary'
+                                      : 'border-muted-foreground'
+                                  }`}>
+                                    {selectedPlotIds.includes(plot.site_id) && (
+                                      <div className="w-full h-full rounded-full bg-white scale-50"></div>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                      <span className="text-sm font-mono bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200">
+                                        {plot.site_id}
+                                      </span>
+                                      <span className="text-sm text-foreground font-medium">
+                                        {plot.plot_name}
+                                      </span>
+                                      {/* Project ID and Project Name in same bubble */}
+                                      {project.P_PlotID && project.P_PlotID.length > 0 && (() => {
+                                        const projectIds = [...new Set(project.P_PlotID.map(plot => plot.project_id).filter(Boolean))];
+                                        return projectIds.length > 0 && (
+                                          <span className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full border border-green-200 dark:bg-green-900 dark:text-green-200">
+                                            {projectIds[0]} - {project['Project Name']}
+                                          </span>
+                                        );
+                                      })()}
+                                      {/* Project details inline at the end */}
+                                      {/* Power availability bubble */}
+                                      {(project["Power Availability (Min)"] || project["Power Availability (Max)"]) && (
+                                        <span className="inline-block bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full border border-orange-200 dark:bg-orange-900 dark:text-orange-200">
+                                          {project["Power Availability (Min)"] && project["Power Availability (Max)"] 
+                                            ? `${project["Power Availability (Min)"]}-${project["Power Availability (Max)"]} MW`
+                                            : project["Power Availability (Min)"] 
+                                              ? `${project["Power Availability (Min)"]} MW`
+                                              : `${project["Power Availability (Max)"]} MW`
+                                          }
+                                        </span>
+                                      )}
+                                      {/* Country Badge */}
+                                      {project.Country && (
+                                        <span className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full border border-purple-200 dark:bg-purple-900 dark:text-purple-200">
+                                          {project.Country}
+                                        </span>
+                                      )}
+                                      {/* Status dropdown - only on first plot */}
+                                      {index === 0 && project["Status"] && project.Id && (
+                                        <div className="ml-auto">
+                                          <select
+                                            value={project["Status"]}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              handleStatusUpdate(project.Id!, e.target.value);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-xs px-2 py-1 rounded border border-border bg-background text-foreground hover:bg-accent/20 transition-colors cursor-pointer"
+                                          >
+                                            <option value="Underway">Underway</option>
+                                            <option value="Closed">Closed</option>
+                                            <option value="On Hold">On Hold</option>
+                                            <option value="Completed">Completed</option>
+                                            <option value="Cancelled">Cancelled</option>
+                                          </select>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -928,6 +1334,38 @@ function ProjectsPageContent() {
           </div>
         </div>
       )}
+
+      {/* Custom Scrollbar Styles */}
+      <style jsx global>{`
+        .custom-scrollbar {
+          scrollbar-width: thick;
+          scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 16px;
+          height: 16px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: hsl(var(--muted));
+          border-radius: 8px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: hsl(var(--muted-foreground));
+          border-radius: 8px;
+          border: 2px solid hsl(var(--muted));
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: hsl(var(--foreground));
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-corner {
+          background: hsl(var(--muted));
+        }
+      `}</style>
 
     </DashboardLayout>
   );

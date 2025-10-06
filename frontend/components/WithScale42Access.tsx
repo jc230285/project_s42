@@ -20,7 +20,7 @@ interface WithScale42AccessProps {
 export function WithScale42Access({ 
   children, 
   fallback = null, 
-  redirectTo = '/unauthorized' 
+  redirectTo = '/' 
 }: WithScale42AccessProps) {
   console.log('!!!!! WithScale42Access: COMPONENT FUNCTION CALLED !!!!');
   console.log('WithScale42Access: Component mounted/rendered');

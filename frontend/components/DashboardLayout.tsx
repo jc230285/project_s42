@@ -23,8 +23,9 @@ import {
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { hasScale42Access } from '@/lib/auth-utils';
+import { DynamicMenu } from '@/components/DynamicMenu';
 
-function DashboardLayout({ children, initialSidebarCollapsed = false, contentClassName }: { children: React.ReactNode, initialSidebarCollapsed?: boolean, contentClassName?: string }) {
+function DashboardLayout({ children, initialSidebarCollapsed = false, contentClassName, disableChat = false }: { children: React.ReactNode, initialSidebarCollapsed?: boolean, contentClassName?: string, disableChat?: boolean }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(!initialSidebarCollapsed);
   const { data: session } = useSession();
@@ -37,7 +38,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
 
   // Initialize n8n chat widget
   useEffect(() => {
-    if (session) {
+    if (session && !disableChat) {
       // Add CSS for n8n chat
       const link = document.createElement('link');
       link.href = 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css';
@@ -142,62 +143,10 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
         }
       };
     }
-  }, [session]);
+  }, [session, disableChat]);
 
   // Check if user has Scale42 access
   const hasScale42 = hasScale42Access(session);
-
-  const menuSections = [
-    {
-      title: 'Dashboard',
-      items: [
-        { href: '/', icon: Home, label: 'Home' },
-      ]
-    },
-    // Only show Projects section for Scale42 users
-    ...(hasScale42 ? [{
-      title: 'Projects',
-      items: [
-        { href: '/projects', icon: FolderOpen, label: 'Projects' },
-        { href: '/map', icon: Map, label: 'Map' },
-        { href: '/schema', icon: Database, label: 'Schema' },
-      ]
-    }] : []),
-    // Only show Hoyanger Power section for Scale42 users
-    ...(hasScale42 ? [{
-      title: 'Hoyanger Power',
-      items: [
-        { href: '/hoyanger', icon: Zap, label: 'Overview' },
-      ]
-    }] : []),
-    // Only show Account Management section for Scale42 users
-    ...(hasScale42 ? [{
-      title: 'Account Management',
-      items: [
-        { href: '/accounts', icon: CreditCard, label: 'Accounts' },
-      ]
-    }] : []),
-    {
-      title: 'Tools',
-      items: [
-        { href: 'https://n8n.edbmotte.com/projects/A35bALSD6kzKLUi6/workflows', icon: Workflow, label: 'n8n' },
-        { href: 'https://nocodb.edbmotte.com/dashboard/#/nc/pjqgy4ri85jks06/mmqclkrvx9lbtpc', icon: Database, label: 'nocodb' },
-        { href: 'https://drive.google.com/drive/recent', icon: HardDrive, label: 'drive' },
-        { href: 'https://www.notion.so', icon: HardDrive, label: 'notion' },
-      ]
-    },
-    {
-      title: 'Settings',
-      items: [
-        // Only show Users for Scale42 users
-        ...(hasScale42 ? [{ href: '/users', icon: Users, label: 'Users' }] : []),
-        ...(session 
-          ? [{ href: '#', icon: LogOut, label: 'Logout', action: 'signout' }]
-          : [{ href: '/login', icon: LogIn, label: 'Login' }]
-        ),
-      ]
-    }
-  ].filter(section => section.items.length > 0); // Remove empty sections
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -205,7 +154,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
       <aside
         className={`${
           isSidebarOpen ? 'w-64' : 'w-16'
-        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col`}
+        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col print:hidden`}
       >
         {/* Sidebar Header with Logo and Toggle */}
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -214,7 +163,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
               variant="ghost"
               size="sm"
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-accent"
+              className="p-2 hover:bg-accent shrink-0"
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -222,7 +171,7 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
               <img
                 src="https://static.wixstatic.com/media/02157e_2734ffe4f4d44b319f9cc6c5f92628bf~mv2.png/v1/fill/w_506,h_128,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Scale42%20Logo%200_1%20-%20White%20-%202kpx.png"
                 alt="Scale42 Logo"
-                className="h-12 w-auto px-2 py-1 ml-3"
+                className="h-10 w-auto max-w-[160px] object-contain ml-2"
               />
             )}
           </div>
@@ -230,56 +179,45 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4">
-          {menuSections.map((section) => (
-            <div key={section.title} className="mb-6">
-              {/* Section Heading */}
-              {isSidebarOpen && (
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
-                  {section.title}
-                </h3>
-              )}
-              
-              {/* Section Items */}
-              {section.items.map((item) => {
-                if (item.action === 'signout') {
-                  return (
-                    <div key="signout-section">
-                      {/* User Email Display */}
-                      {session?.user?.email && isSidebarOpen && (
-                        <div className="px-2 py-1 mb-2 text-xs text-muted-foreground truncate">
-                          {session.user.email}
-                        </div>
-                      )}
-                      <Button
-                        variant="ghost"
-                        className={`w-full justify-start mb-2 text-destructive hover:text-destructive hover:bg-destructive/10 ${!isSidebarOpen ? 'px-2' : ''}`}
-                        onClick={handleSignOut}
-                        title={!isSidebarOpen ? item.label : undefined}
-                      >
-                        <item.icon className="h-5 w-5" />
-                        {isSidebarOpen && <span className="ml-3">{item.label}</span>}
-                      </Button>
-                    </div>
-                  );
-                }
-                
-                return (
-                  <Link key={item.href} href={item.href}>
-                    <Button
-                      variant={pathname === item.href ? 'secondary' : 'ghost'}
-                      className={`w-full justify-start mb-2 ${
-                        pathname === item.href ? 'bg-accent text-accent-foreground' : ''
-                      } ${!isSidebarOpen ? 'px-2' : ''}`}
-                      title={!isSidebarOpen ? item.label : undefined}
-                    >
-                      <item.icon className="h-5 w-5" />
-                      {isSidebarOpen && <span className="ml-3">{item.label}</span>}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+          {/* Dynamic Menu based on user permissions */}
+          <DynamicMenu 
+            isSidebarOpen={isSidebarOpen}
+            onNavigate={(path) => router.push(path)}
+          />
+          
+          {/* User Section */}
+          <div className="mt-auto pt-4 border-t border-border">
+            {session?.user?.email && isSidebarOpen && (
+              <div className="px-2 py-1 mb-2 text-xs text-muted-foreground truncate">
+                {session.user.email}
+              </div>
+            )}
+            
+            {session ? (
+              <Button
+                variant="ghost"
+                className={`w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10 ${
+                  !isSidebarOpen ? 'px-2' : ''
+                }`}
+                onClick={handleSignOut}
+                title={!isSidebarOpen ? 'Logout' : undefined}
+              >
+                <LogOut className="h-5 w-5 flex-shrink-0" />
+                {isSidebarOpen && <span className="ml-3">Logout</span>}
+              </Button>
+            ) : (
+              <Link href="/login">
+                <Button
+                  variant="ghost"
+                  className={`w-full justify-start ${!isSidebarOpen ? 'px-2' : ''}`}
+                  title={!isSidebarOpen ? 'Login' : undefined}
+                >
+                  <LogIn className="h-5 w-5 flex-shrink-0" />
+                  {isSidebarOpen && <span className="ml-3">Login</span>}
+                </Button>
+              </Link>
+            )}
+          </div>
         </nav>
       </aside>
 

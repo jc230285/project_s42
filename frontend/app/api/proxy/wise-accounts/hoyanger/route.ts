@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
     // Forward the request to the backend
     // Use Docker internal network URL when in container, fallback to localhost for development
-    const backendUrl = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://backend:8000';
+    const backendUrl = process.env.BACKEND_BASE_URL || 'http://localhost:8150';
 
     const response = await fetch(`${backendUrl}/wise-accounts/hoyanger`, {
       method: 'GET',

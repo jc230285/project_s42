@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Authorization header required' }, { status: 401 })
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+    const backendUrl = process.env.BACKEND_BASE_URL || 'http://localhost:8150'
     const response = await fetch(`${backendUrl}/projects/schema`, {
       method: 'GET',
       headers: {

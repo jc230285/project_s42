@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Background with gradient -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f3460;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Rounded background -->
+  <rect width="64" height="64" rx="12" fill="url(#bgGrad)"/>
+  
+  <!-- Decorative elements -->
+  <circle cx="12" cy="12" r="2" fill="#00d9ff" opacity="0.3"/>
+  <circle cx="52" cy="12" r="2" fill="#00d9ff" opacity="0.3"/>
+  
+  <!-- S42 Text with glow effect -->
+  <text x="32" y="44" font-family="Arial, sans-serif" font-size="26" font-weight="bold" fill="#00d9ff" text-anchor="middle" filter="url(#glow)">S42</text>
+  
+  <!-- Top accent bar -->
+  <rect x="12" y="16" width="40" height="3" rx="1.5" fill="#00d9ff" opacity="0.6"/>
+  
+  <!-- Bottom accent dots -->
+  <circle cx="26" cy="52" r="1.5" fill="#00d9ff" opacity="0.4"/>
+  <circle cx="32" cy="52" r="1.5" fill="#00d9ff" opacity="0.6"/>
+  <circle cx="38" cy="52" r="1.5" fill="#00d9ff" opacity="0.4"/>
+</svg>

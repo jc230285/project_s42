@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
+    const backendUrl = process.env.BACKEND_BASE_URL || 'http://localhost:8150'
     const response = await fetch(`${backendUrl}/nocodb/verify-update?table_id=${tableId}&row_id=${rowId}&field_id=${fieldId}`, {
       method: 'GET',
       headers: {

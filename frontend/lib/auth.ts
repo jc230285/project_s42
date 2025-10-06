@@ -30,24 +30,23 @@ export const authOptions: NextAuthOptions = {
         
         // Always fetch fresh user groups from backend
         try {
-          // Use internal backend URL for server-side requests
+          // Use the public auth endpoint that doesn't require authentication
           const backendUrl = process.env.NODE_ENV === 'production' 
-            ? 'https://s42api.edbmotte.com' 
-            : 'http://backend:8000';
+            ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
+            : 'http://localhost:8000';
             
-          console.log('JWT: Fetching user data from:', `${backendUrl}/user-info/${encodeURIComponent(email)}`);
+          console.log('JWT: Fetching user data from:', `${backendUrl}/auth/user-groups/${encodeURIComponent(email)}`);
           
-          const response = await fetch(`${backendUrl}/user-info/${encodeURIComponent(email)}`, {
-            headers: { 'Authorization': 'Bearer internal-auth-check' }
-          });
+          const response = await fetch(`${backendUrl}/auth/user-groups/${encodeURIComponent(email)}`);
           
           console.log('JWT: Response status:', response.status);
           
           if (response.ok) {
             const userData = await response.json();
             console.log('JWT: User data from backend:', userData);
-            token.groups = userData.group_name ? [userData.group_name] : [];
-            token.userId = userData.id;
+            // Handle the backend response format
+            token.groups = userData.groups ? userData.groups.map((g: any) => g.name) : [];
+            token.userId = userData.user ? userData.user.id : null;
             console.log('JWT: Assigned groups to token:', token.groups);
           } else {
             const errorText = await response.text();
@@ -85,22 +84,21 @@ export const authOptions: NextAuthOptions = {
             console.log('Session: Groups missing or empty, fetching from backend...');
             try {
               const backendUrl = process.env.NODE_ENV === 'production' 
-                ? 'https://s42api.edbmotte.com' 
-                : 'http://backend:8000';
+                ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
+                : 'http://localhost:8000';
                 
               console.log('Session: Fetching user data from:', `${backendUrl}/user-info/${encodeURIComponent(session.user.email)}`);
               
-              const response = await fetch(`${backendUrl}/user-info/${encodeURIComponent(session.user.email)}`, {
-                headers: { 'Authorization': 'Bearer internal-auth-check' }
-              });
+              const response = await fetch(`${backendUrl}/user-info/${encodeURIComponent(session.user.email)}`);
               
               console.log('Session: API response status:', response.status);
               
               if (response.ok) {
                 const userData = await response.json();
                 console.log('Session: User data from backend:', userData);
-                (session.user as any).groups = userData.group_name ? [userData.group_name] : [];
-                (session.user as any).id = userData.id;
+                // Handle the Flask backend response format
+                (session.user as any).groups = userData.groups ? userData.groups.map((g: any) => g.name) : [];
+                (session.user as any).id = userData.user ? userData.user.id : null;
                 console.log('Session: Assigned groups to session:', (session.user as any).groups);
               } else {
                 const errorText = await response.text();
@@ -122,32 +120,21 @@ export const authOptions: NextAuthOptions = {
       if (user.email) {
         try {
           const backendUrl = process.env.NODE_ENV === 'production' 
-            ? 'https://s42api.edbmotte.com' 
-            : 'http://backend:8000';
+            ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
+            : 'http://localhost:8000';
           
           // Check if user exists
-          const userInfoResponse = await fetch(`${backendUrl}/user-info/${encodeURIComponent(user.email)}`, {
-            headers: { 'Authorization': 'Bearer internal-auth-check' }
-          });
+          const userInfoResponse = await fetch(`${backendUrl}/user-info/${encodeURIComponent(user.email)}`);
           
           if (userInfoResponse.ok) {
             const existingUser = await userInfoResponse.json();
-            if (existingUser && existingUser.id) {
-              // Update last login
-              await fetch(`${backendUrl}/update-user-login`, {
-                method: 'POST',
-                headers: { 
-                  'Authorization': 'Bearer internal-auth-check',
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ email: user.email })
-              });
+            if (existingUser && existingUser.user && existingUser.user.id) {
+              console.log('User exists, no need to create');
             } else {
               // Create new user
               await fetch(`${backendUrl}/create-user`, {
                 method: 'POST',
                 headers: { 
-                  'Authorization': 'Bearer internal-auth-check',
                   'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -161,7 +148,6 @@ export const authOptions: NextAuthOptions = {
             await fetch(`${backendUrl}/create-user`, {
               method: 'POST',
               headers: { 
-                'Authorization': 'Bearer internal-auth-check',
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({
