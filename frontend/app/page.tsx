@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { hasUserGroup } from '@/lib/auth-utils';
 import toast from 'react-hot-toast';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 
 interface TableRecord {
   [key: string]: any;
@@ -14,8 +14,18 @@ interface TableRecord {
 export default function HomePage() {
   const { data: session, status } = useSession();
   const [tableData, setTableData] = useState<TableRecord[]>([]);
+  const [filteredData, setFilteredData] = useState<TableRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Filter states
+  const [filters, setFilters] = useState({
+    username: '',
+    from: '',
+    company: '',
+    companyCardUsed: '',
+    project: ''
+  });
 
   // Check if user has Scale42 access
   const hasScale42Access = hasUserGroup(session, 'Scale42');
@@ -56,6 +66,63 @@ export default function HomePage() {
       fetchTableData();
     }
   }, [hasScale42Access, status]);
+
+  // Apply filters whenever tableData or filters change
+  useEffect(() => {
+    applyFilters();
+  }, [tableData, filters]);
+
+  // Get unique values for dropdown filters
+  const getUniqueValues = (fieldName: string) => {
+    const values = tableData
+      .map(record => record[fieldName])
+      .filter(value => value && value !== '')
+      .filter((value, index, self) => self.indexOf(value) === index)
+      .sort();
+    return ['', ...values]; // Add empty option for "All"
+  };
+
+  const applyFilters = () => {
+    let filtered = [...tableData];
+
+    if (filters.username) {
+      filtered = filtered.filter(record => 
+        record.username?.toLowerCase().includes(filters.username.toLowerCase())
+      );
+    }
+    if (filters.from) {
+      filtered = filtered.filter(record => 
+        record.From?.toLowerCase().includes(filters.from.toLowerCase())
+      );
+    }
+    if (filters.company) {
+      filtered = filtered.filter(record => 
+        record.Company?.toLowerCase().includes(filters.company.toLowerCase())
+      );
+    }
+    if (filters.companyCardUsed) {
+      filtered = filtered.filter(record => 
+        record['Company Card Used']?.toLowerCase().includes(filters.companyCardUsed.toLowerCase())
+      );
+    }
+    if (filters.project) {
+      filtered = filtered.filter(record => 
+        record.Project?.toLowerCase().includes(filters.project.toLowerCase())
+      );
+    }
+
+    setFilteredData(filtered);
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      username: '',
+      from: '',
+      company: '',
+      companyCardUsed: '',
+      project: ''
+    });
+  };
 
   const fetchTableData = async () => {
     try {
@@ -103,12 +170,46 @@ export default function HomePage() {
   // Format date as dd/mm/yyyy
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '-';
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    try {
+      // Handle various date formats
+      let date: Date;
+      
+      // If it's already in dd/mm/yyyy format (like "25/09/2025")
+      if (dateString.includes('/') && dateString.split('/').length === 3) {
+        const parts = dateString.split(' ')[0].split('/');
+        if (parts.length === 3) {
+          // Check if it's dd/mm/yyyy or mm/dd/yyyy
+          const day = parseInt(parts[0]);
+          const month = parseInt(parts[1]);
+          const year = parseInt(parts[2]);
+          
+          if (day > 12) {
+            // Definitely dd/mm/yyyy
+            date = new Date(year, month - 1, day);
+          } else if (month > 12) {
+            // Definitely mm/dd/yyyy
+            date = new Date(year, day - 1, month);
+          } else {
+            // Ambiguous, assume dd/mm/yyyy
+            date = new Date(year, month - 1, day);
+          }
+        } else {
+          date = new Date(dateString);
+        }
+      } else {
+        date = new Date(dateString);
+      }
+      
+      if (isNaN(date.getTime())) return '-';
+      
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    } catch (error) {
+      console.error('Error formatting date:', dateString, error);
+      return '-';
+    }
   };
 
   // Truncate text to specified length
@@ -142,17 +243,16 @@ export default function HomePage() {
           <div className="bg-card rounded-lg border border-border">
             <div className="px-6 py-4 border-b border-border flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">Scale42 Data Table</h3>
-                <p className="text-sm text-muted-foreground">Full table data from NocoDB table: msspusqx9ee9xkd</p>
+                <h3 className="text-lg font-semibold text-foreground">Scale42 Recipt Tracker</h3>
               </div>
               {tableData.length > 0 && tableData[0]?.webViewLink && (
                 <a
-                  href={String(tableData[0].webViewLink)}
+                  href="https://t.me/+V-RgN2TACVkwNzk0"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                 >
-                  View in Drive
+                  Upload to Telegram
                 </a>
               )}
             </div>
@@ -177,108 +277,207 @@ export default function HomePage() {
                 <p className="text-muted-foreground">No data available</p>
               </div>
             ) : (
-              <div className="overflow-x-auto max-h-[50vh]">
-                <table className="min-w-full divide-y divide-border">
-                  <thead className="bg-muted sticky top-0">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        From
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Username
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Total Amount
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Company
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-card divide-y divide-border">
-                    {tableData.map((record, index) => (
-                      <tr key={index} className="hover:bg-accent group">
-                        {/* Date */}
-                        <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                          {formatDate(record.invoiceDate)}
-                        </td>
-                        
-                        {/* From (truncated with link and tooltip) */}
-                        <td className="px-4 py-3 text-sm relative group/tooltip">
-                          {record.webViewLink ? (
-                            <a 
-                              href={String(record.webViewLink)} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                            >
-                              {truncateText(record.From, 25)}
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          ) : (
-                            <span>{truncateText(record.From, 25)}</span>
-                          )}
-                          
-                          {/* Tooltip with full details */}
-                          {(record.name || record.shortDescription || record.invoiceNumber || record.To || record.card || record.dueDate || record.Project || record['Company Card Used'] || record['User Description']) && (
-                            <div className="invisible group-hover/tooltip:visible absolute z-10 left-0 top-full mt-1 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg">
-                              <div className="space-y-1">
-                                {record.name && (
-                                  <div><span className="font-semibold">Name:</span> {record.name}</div>
-                                )}
-                                {record.shortDescription && (
-                                  <div><span className="font-semibold">Description:</span> {record.shortDescription}</div>
-                                )}
-                                {record.invoiceNumber && (
-                                  <div><span className="font-semibold">Invoice #:</span> {record.invoiceNumber}</div>
-                                )}
-                                {record.To && (
-                                  <div><span className="font-semibold">To:</span> {record.To}</div>
-                                )}
-                                {record.card && (
-                                  <div><span className="font-semibold">Card:</span> {record.card}</div>
-                                )}
-                                {record.dueDate && (
-                                  <div><span className="font-semibold">Due Date:</span> {formatDate(record.dueDate)}</div>
-                                )}
-                                {record.Project && (
-                                  <div><span className="font-semibold">Project:</span> {record.Project}</div>
-                                )}
-                                {record['Company Card Used'] && (
-                                  <div><span className="font-semibold">Company Card:</span> {record['Company Card Used']}</div>
-                                )}
-                                {record['User Description'] && (
-                                  <div><span className="font-semibold">User Desc:</span> {record['User Description']}</div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                        
-                        {/* Username */}
-                        <td className="px-4 py-3 text-sm text-foreground">
-                          {record.username || '-'}
-                        </td>
-                        
-                        {/* Total Amount with Currency Code */}
-                        <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                          {record['Total Amount'] && record['Currency Code'] 
-                            ? `${record['Total Amount']} ${record['Currency Code']}`
-                            : record['Total Amount'] || '-'}
-                        </td>
-                        
-                        {/* Company */}
-                        <td className="px-4 py-3 text-sm text-foreground">
-                          {record.Company || '-'}
-                        </td>
+              <>
+                {/* Filters */}
+                <div className="px-6 py-4 bg-muted/50 border-b border-border">
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">From</label>
+                      <input
+                        type="text"
+                        value={filters.from}
+                        onChange={(e) => setFilters({...filters, from: e.target.value})}
+                        placeholder="Filter by from..."
+                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Username</label>
+                      <select
+                        value={filters.username}
+                        onChange={(e) => setFilters({...filters, username: e.target.value})}
+                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {getUniqueValues('username').map((value, idx) => (
+                          <option key={idx} value={value}>
+                            {value || 'All'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Company Card</label>
+                      <select
+                        value={filters.companyCardUsed}
+                        onChange={(e) => setFilters({...filters, companyCardUsed: e.target.value})}
+                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {getUniqueValues('Company Card Used').map((value, idx) => (
+                          <option key={idx} value={value}>
+                            {value || 'All'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Company</label>
+                      <select
+                        value={filters.company}
+                        onChange={(e) => setFilters({...filters, company: e.target.value})}
+                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {getUniqueValues('Company').map((value, idx) => (
+                          <option key={idx} value={value}>
+                            {value || 'All'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1 min-w-[150px]">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Project</label>
+                      <select
+                        value={filters.project}
+                        onChange={(e) => setFilters({...filters, project: e.target.value})}
+                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {getUniqueValues('Project').map((value, idx) => (
+                          <option key={idx} value={value}>
+                            {value || 'All'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={clearFilters}
+                      className="px-4 py-1.5 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors flex items-center gap-1"
+                    >
+                      <X className="w-4 h-4" />
+                      Clear
+                    </button>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Showing {filteredData.length} of {tableData.length} records
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="relative overflow-x-auto" style={{ maxHeight: '400px' }}>
+                  <table className="w-full divide-y divide-border">
+                    <thead className="bg-muted sticky top-0 z-10">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                          From
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                          Username
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                          Total Amount
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                          Company
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="bg-card divide-y divide-border">
+                      {filteredData.slice(0, 100).map((record, index) => (
+                        <tr key={index} className="hover:bg-accent group">
+                          {/* Date */}
+                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
+                            {formatDate(record.invoiceDate)}
+                          </td>
+                          
+                          {/* From (truncated with link and tooltip) */}
+                          <td className="px-4 py-3 text-sm relative">
+                            <div className="group/tooltip">
+                              {record.webViewLink ? (
+                                <a 
+                                  href={String(record.webViewLink)} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                                >
+                                  {truncateText(record.From, 25)}
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              ) : (
+                                <span>{truncateText(record.From, 25)}</span>
+                              )}
+                              
+                              {/* Tooltip with full details - Fixed to bottom-right */}
+                              {(record.name || record.shortDescription || record.invoiceNumber || record.To || record.card || record.dueDate || record.Project || record['Company Card Used'] || record['User Description']) && (
+                                <div className="invisible group-hover/tooltip:visible fixed bottom-4 right-4 w-96 p-4 bg-gray-900 text-white text-xs rounded-lg shadow-2xl z-50 border border-gray-700">
+                                  <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+                                    {record.name && (
+                                      <div><span className="font-semibold text-blue-300">Name:</span> <span className="text-gray-100">{record.name}</span></div>
+                                    )}
+                                    {record.shortDescription && (
+                                      <div><span className="font-semibold text-blue-300">Description:</span> <span className="text-gray-100">{record.shortDescription}</span></div>
+                                    )}
+                                    {record.invoiceNumber && (
+                                      <div><span className="font-semibold text-blue-300">Invoice #:</span> <span className="text-gray-100">{record.invoiceNumber}</span></div>
+                                    )}
+                                    {record.From && (
+                                      <div><span className="font-semibold text-blue-300">From:</span> <span className="text-gray-100">{record.From}</span></div>
+                                    )}
+                                    {record.To && (
+                                      <div><span className="font-semibold text-blue-300">To:</span> <span className="text-gray-100">{record.To}</span></div>
+                                    )}
+                                    {record.card && (
+                                      <div><span className="font-semibold text-blue-300">Card:</span> <span className="text-gray-100">{record.card}</span></div>
+                                    )}
+                                    {record.dueDate && (
+                                      <div><span className="font-semibold text-blue-300">Due Date:</span> <span className="text-gray-100">{formatDate(record.dueDate)}</span></div>
+                                    )}
+                                    {record.Project && (
+                                      <div><span className="font-semibold text-blue-300">Project:</span> <span className="text-gray-100">{record.Project}</span></div>
+                                    )}
+                                    {record.Company && (
+                                      <div><span className="font-semibold text-blue-300">Company:</span> <span className="text-gray-100">{record.Company}</span></div>
+                                    )}
+                                    {record['Company Card Used'] && (
+                                      <div><span className="font-semibold text-blue-300">Company Card:</span> <span className="text-gray-100">{record['Company Card Used']}</span></div>
+                                    )}
+                                    {record['User Description'] && (
+                                      <div><span className="font-semibold text-blue-300">User Desc:</span> <span className="text-gray-100">{record['User Description']}</span></div>
+                                    )}
+                                    {record['Currency Code'] && (
+                                      <div><span className="font-semibold text-blue-300">Currency:</span> <span className="text-gray-100">{record['Currency Code']}</span></div>
+                                    )}
+                                    {record.Country && (
+                                      <div><span className="font-semibold text-blue-300">Country:</span> <span className="text-gray-100">{record.Country}</span></div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          
+                          {/* Username */}
+                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
+                            {record.username || '-'}
+                          </td>
+                          
+                          {/* Total Amount with Currency Code */}
+                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
+                            {record['Total Amount'] && record['Currency Code'] 
+                              ? `${record['Total Amount']} ${record['Currency Code']}`
+                              : record['Total Amount'] || '-'}
+                          </td>
+                          
+                          {/* Company */}
+                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
+                            {record.Company || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         )}
