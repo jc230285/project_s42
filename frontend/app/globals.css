@@ -85,6 +85,159 @@
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.4) hsl(var(--muted) / 0.3);
   }
+
+  /* Rich Text Prose Styling */
+  .prose a {
+    @apply text-blue-400 hover:text-blue-300 underline transition-colors;
+  }
+
+  .prose h1 {
+    @apply text-2xl font-bold mb-4 mt-6;
+  }
+
+  .prose h2 {
+    @apply text-xl font-bold mb-3 mt-5;
+  }
+
+  .prose h3 {
+    @apply text-lg font-bold mb-2 mt-4;
+  }
+
+  .prose p {
+    @apply mb-3;
+  }
+
+  .prose ul {
+    @apply list-disc ml-6 mb-3;
+  }
+
+  .prose ol {
+    @apply list-decimal ml-6 mb-3;
+  }
+
+  .prose li {
+    @apply mb-1;
+  }
+
+  .prose strong,
+  .prose b {
+    @apply font-bold;
+  }
+
+  .prose em,
+  .prose i {
+    @apply italic;
+  }
+
+  .prose u {
+    @apply underline;
+  }
+
+  .prose s {
+    @apply line-through;
+  }
+
+  .prose code {
+    @apply bg-gray-700 px-2 py-1 rounded text-sm font-mono;
+  }
+
+  .prose pre {
+    @apply bg-gray-800 p-4 rounded overflow-x-auto mb-3;
+  }
+
+  /* React Quill Styling */
+  .quill-editor-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .quill-editor-container .quill {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .ql-toolbar {
+    background: #f3f4f6 !important;
+    border-top-left-radius: 0.375rem;
+    border-top-right-radius: 0.375rem;
+    flex-shrink: 0;
+  }
+
+  .ql-container {
+    font-size: 14px;
+    flex: 1;
+    overflow: auto;
+    border-bottom-left-radius: 0.375rem;
+    border-bottom-right-radius: 0.375rem;
+  }
+
+  .ql-editor {
+    min-height: 200px;
+  }
+
+  /* Make toolbar icons more visible */
+  .ql-toolbar button,
+  .ql-toolbar .ql-picker-label {
+    color: #1f2937 !important;
+  }
+
+  .ql-toolbar button:hover,
+  .ql-toolbar .ql-picker-label:hover {
+    color: #000 !important;
+  }
+
+  .ql-toolbar button svg,
+  .ql-toolbar .ql-picker-label svg {
+    stroke: #1f2937 !important;
+  }
+
+  .ql-toolbar button:hover svg,
+  .ql-toolbar .ql-picker-label:hover svg {
+    stroke: #000 !important;
+  }
+
+  .ql-toolbar .ql-stroke {
+    stroke: #1f2937 !important;
+  }
+
+  .ql-toolbar .ql-fill {
+    fill: #1f2937 !important;
+  }
+
+  .ql-toolbar button:hover .ql-stroke {
+    stroke: #000 !important;
+  }
+
+  .ql-toolbar button:hover .ql-fill {
+    fill: #000 !important;
+  }
+
+  .ql-toolbar button.ql-active .ql-stroke,
+  .ql-toolbar .ql-picker-label.ql-active .ql-stroke {
+    stroke: #2563eb !important;
+  }
+
+  .ql-toolbar button.ql-active .ql-fill,
+  .ql-toolbar .ql-picker-label.ql-active .ql-fill {
+    fill: #2563eb !important;
+  }
+
+  /* Dark mode adjustments for Quill */
+  .dark .ql-toolbar {
+    background: #374151 !important;
+    border-color: #4b5563 !important;
+  }
+
+  .dark .ql-container {
+    border-color: #4b5563 !important;
+  }
+
+  .dark .ql-editor {
+    background: white;
+    color: #111827;
+  }
 }
 
 /* Print Styles - Must be AFTER @tailwind utilities to override */

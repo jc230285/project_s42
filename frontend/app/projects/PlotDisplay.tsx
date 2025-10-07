@@ -2,6 +2,11 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
 import { hasScale42Access } from '@/lib/auth-utils';
+import dynamic from 'next/dynamic';
+import 'react-quill/dist/quill.snow.css';
+
+// Dynamically import ReactQuill to avoid SSR issues
+const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 
 interface SchemaField {
   "Field Name": string;
@@ -1007,6 +1012,26 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
   const [fieldAuditRecords, setFieldAuditRecords] = useState<any[]>([]);
   const [fieldHistoryLoading, setFieldHistoryLoading] = useState(false);
 
+  // Quill editor modules configuration
+  const modules = {
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'color': [] }, { 'background': [] }],
+      ['link'],
+      ['clean']
+    ],
+  };
+
+  const formats = [
+    'header',
+    'bold', 'italic', 'underline', 'strike',
+    'list', 'bullet',
+    'color', 'background',
+    'link'
+  ];
+
   // Sync displayValue with fieldValue prop changes
   useEffect(() => {
     setDisplayValue(fieldValue);
@@ -1291,10 +1316,10 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
 
       {/* Rich Text Editor Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-lg shadow-2xl w-full mx-4 h-[80vh] flex flex-col" style={{ maxWidth: '1200px' }}>
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-t-lg">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-t-lg flex-shrink-0">
               <h3 className="text-lg font-semibold text-white">
                 Edit {field["Field Name"]}
               </h3>
@@ -1310,18 +1335,23 @@ const LongTextField: React.FC<LongTextFieldProps> = ({
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 p-4 overflow-hidden bg-gray-900 dark:bg-gray-800">
-              <textarea
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                className="w-full h-full min-h-[400px] p-3 bg-gray-800 dark:bg-gray-700 border border-gray-600 dark:border-gray-500 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-gray-400"
-                placeholder="Enter rich text content (HTML supported)..."
-                disabled={isSaving}
-              />
+            <div className="flex-1 flex flex-col p-4 overflow-hidden bg-gray-900 dark:bg-gray-800">
+              {/* React Quill WYSIWYG Editor */}
+              <div className="flex-1 bg-white rounded overflow-hidden quill-editor-container">
+                <ReactQuill
+                  theme="snow"
+                  value={editValue}
+                  onChange={setEditValue}
+                  modules={modules}
+                  formats={formats}
+                  className="h-full"
+                  placeholder="Enter rich text content..."
+                />
+              </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-b-lg">
+            <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 dark:border-gray-600 bg-gray-800 dark:bg-gray-700 rounded-b-lg flex-shrink-0">
               <button
                 onClick={handleCancel}
                 className="px-4 py-2 text-sm border border-gray-600 text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
