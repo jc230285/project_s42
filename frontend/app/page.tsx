@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import DashboardLayout from '@/components/DashboardLayout';
 import { hasUserGroup } from '@/lib/auth-utils';
 import toast from 'react-hot-toast';
-import { ExternalLink, X } from 'lucide-react';
 
 interface TableRecord {
   [key: string]: any;
@@ -14,18 +13,11 @@ interface TableRecord {
 export default function HomePage() {
   const { data: session, status } = useSession();
   const [tableData, setTableData] = useState<TableRecord[]>([]);
-  const [filteredData, setFilteredData] = useState<TableRecord[]>([]);
+  const [activityData, setActivityData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Filter states
-  const [filters, setFilters] = useState({
-    username: '',
-    from: '',
-    company: '',
-    companyCardUsed: '',
-    project: ''
-  });
+  const [activityError, setActivityError] = useState<string | null>(null);
 
   // Check if user has Scale42 access
   const hasScale42Access = hasUserGroup(session, 'Scale42');
@@ -64,65 +56,9 @@ export default function HomePage() {
   useEffect(() => {
     if (hasScale42Access && status === "authenticated") {
       fetchTableData();
+      fetchActivityData();
     }
   }, [hasScale42Access, status]);
-
-  // Apply filters whenever tableData or filters change
-  useEffect(() => {
-    applyFilters();
-  }, [tableData, filters]);
-
-  // Get unique values for dropdown filters
-  const getUniqueValues = (fieldName: string) => {
-    const values = tableData
-      .map(record => record[fieldName])
-      .filter(value => value && value !== '')
-      .filter((value, index, self) => self.indexOf(value) === index)
-      .sort();
-    return ['', ...values]; // Add empty option for "All"
-  };
-
-  const applyFilters = () => {
-    let filtered = [...tableData];
-
-    if (filters.username) {
-      filtered = filtered.filter(record => 
-        record.username?.toLowerCase().includes(filters.username.toLowerCase())
-      );
-    }
-    if (filters.from) {
-      filtered = filtered.filter(record => 
-        record.From?.toLowerCase().includes(filters.from.toLowerCase())
-      );
-    }
-    if (filters.company) {
-      filtered = filtered.filter(record => 
-        record.Company?.toLowerCase().includes(filters.company.toLowerCase())
-      );
-    }
-    if (filters.companyCardUsed) {
-      filtered = filtered.filter(record => 
-        record['Company Card Used']?.toLowerCase().includes(filters.companyCardUsed.toLowerCase())
-      );
-    }
-    if (filters.project) {
-      filtered = filtered.filter(record => 
-        record.Project?.toLowerCase().includes(filters.project.toLowerCase())
-      );
-    }
-
-    setFilteredData(filtered);
-  };
-
-  const clearFilters = () => {
-    setFilters({
-      username: '',
-      from: '',
-      company: '',
-      companyCardUsed: '',
-      project: ''
-    });
-  };
 
   const fetchTableData = async () => {
     try {
@@ -164,6 +100,113 @@ export default function HomePage() {
       toast.error(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchActivityData = async () => {
+    try {
+      setActivityLoading(true);
+      setActivityError(null);
+
+      console.log('📡 Fetching activity data (comments and audits)...');
+
+      // Fetch from both projects and landplots tables
+      const [projectsResponse, landplotsResponse] = await Promise.all([
+        makeAuthenticatedRequest('/api/proxy/nocodb/table/m53ta9fzt0c3bwy'), // projects
+        makeAuthenticatedRequest('/api/proxy/nocodb/table/myahep8nywxasol')  // landplots
+      ]);
+
+      console.log('📡 Projects response status:', projectsResponse.status);
+      console.log('📡 Landplots response status:', landplotsResponse.status);
+
+      if (!projectsResponse.ok) {
+        const errorData = await projectsResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ Projects API Error:', errorData);
+        throw new Error(`Failed to fetch projects: ${errorData.error || projectsResponse.statusText}`);
+      }
+
+      if (!landplotsResponse.ok) {
+        const errorData = await landplotsResponse.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ Landplots API Error:', errorData);
+        throw new Error(`Failed to fetch landplots: ${errorData.error || landplotsResponse.statusText}`);
+      }
+
+      const projectsData = await projectsResponse.json();
+      const landplotsData = await landplotsResponse.json();
+
+      console.log('✅ Projects data:', projectsData);
+      console.log('✅ Landplots data:', landplotsData);
+
+      const projectsRecords = projectsData.records || projectsData.list || [];
+      const landplotsRecords = landplotsData.records || landplotsData.list || [];
+
+      // Collect all comments and audits
+      const activities: any[] = [];
+
+      // Process projects
+      projectsRecords.forEach((record: any) => {
+        if (record.Comments) {
+          activities.push({
+            type: 'comment',
+            source: 'Project',
+            sourceName: record.Project || 'Unknown Project',
+            content: record.Comments,
+            timestamp: record.UpdatedAt || record.CreatedAt || new Date().toISOString(),
+            recordId: record.Id
+          });
+        }
+        if (record.Audit) {
+          activities.push({
+            type: 'audit',
+            source: 'Project',
+            sourceName: record.Project || 'Unknown Project',
+            content: record.Audit,
+            timestamp: record.UpdatedAt || record.CreatedAt || new Date().toISOString(),
+            recordId: record.Id
+          });
+        }
+      });
+
+      // Process landplots
+      landplotsRecords.forEach((record: any) => {
+        if (record.Comments) {
+          activities.push({
+            type: 'comment',
+            source: 'Landplot',
+            sourceName: record['Plot Number'] || 'Unknown Plot',
+            content: record.Comments,
+            timestamp: record.UpdatedAt || record.CreatedAt || new Date().toISOString(),
+            recordId: record.Id
+          });
+        }
+        if (record.Audit) {
+          activities.push({
+            type: 'audit',
+            source: 'Landplot',
+            sourceName: record['Plot Number'] || 'Unknown Plot',
+            content: record.Audit,
+            timestamp: record.UpdatedAt || record.CreatedAt || new Date().toISOString(),
+            recordId: record.Id
+          });
+        }
+      });
+
+      // Sort by timestamp (newest first)
+      activities.sort((a, b) => {
+        const dateA = new Date(a.timestamp);
+        const dateB = new Date(b.timestamp);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      console.log('📊 Activity records count:', activities.length);
+      setActivityData(activities);
+    } catch (err) {
+      console.error('❌ Error fetching activity data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch activity data';
+      setActivityError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setActivityLoading(false);
     }
   };
 
@@ -238,29 +281,28 @@ export default function HomePage() {
           <p className="mt-2 text-muted-foreground">Welcome to Scale42 - Your renewable energy command center</p>
         </div>
 
-        {/* Scale42 Table Widget - Only visible to Scale42 group */}
+        {/* Two widgets side by side */}
         {hasScale42Access && (
-          <div className="bg-card rounded-lg border border-border">
-            <div className="px-6 py-4 border-b border-border flex justify-between items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Scale42 Receipt Widget */}
+            <div className="bg-card rounded-lg border border-border">
+              <div className="px-6 py-4 border-b border-border flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">Scale42 Recipt Tracker</h3>
+                <h3 className="text-lg font-semibold text-foreground">Recent Receipts</h3>
+                <p className="text-sm text-muted-foreground">Last 10 receipts</p>
               </div>
-              {tableData.length > 0 && tableData[0]?.webViewLink && (
-                <a
-                  href="https://t.me/+V-RgN2TACVkwNzk0"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                >
-                  Upload to Telegram
-                </a>
-              )}
+              <a
+                href="/receipts"
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+              >
+                View All Receipts
+              </a>
             </div>
 
             {loading ? (
               <div className="p-6 text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                <p className="mt-2 text-muted-foreground">Loading table data...</p>
+                <p className="mt-2 text-muted-foreground">Loading receipts...</p>
               </div>
             ) : error ? (
               <div className="p-6 text-center">
@@ -274,211 +316,97 @@ export default function HomePage() {
               </div>
             ) : tableData.length === 0 ? (
               <div className="p-6 text-center">
-                <p className="text-muted-foreground">No data available</p>
+                <p className="text-muted-foreground">No receipts available</p>
               </div>
             ) : (
-              <>
-                {/* Filters */}
-                <div className="px-6 py-4 bg-muted/50 border-b border-border">
-                  <div className="flex flex-wrap gap-3 items-end">
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">From</label>
-                      <input
-                        type="text"
-                        value={filters.from}
-                        onChange={(e) => setFilters({...filters, from: e.target.value})}
-                        placeholder="Filter by from..."
-                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
+              <div className="divide-y divide-border">
+                {tableData.slice(0, 10).map((record, index) => (
+                  <div key={index} className="px-6 py-3 hover:bg-accent transition-colors flex items-center justify-between">
+                    {/* Left: Date and From */}
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="text-sm text-muted-foreground whitespace-nowrap">
+                        {formatDate(record.invoiceDate)}
+                      </div>
+                      <div className="text-sm text-foreground truncate">
+                        {truncateText(record.From, 50)}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">Username</label>
-                      <select
-                        value={filters.username}
-                        onChange={(e) => setFilters({...filters, username: e.target.value})}
-                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        {getUniqueValues('username').map((value, idx) => (
-                          <option key={idx} value={value}>
-                            {value || 'All'}
-                          </option>
-                        ))}
-                      </select>
+                    
+                    {/* Right: Total Amount */}
+                    <div className="text-sm font-semibold text-foreground whitespace-nowrap ml-4">
+                      {record['Total Amount'] && record['Currency Code'] 
+                        ? `${record['Total Amount']} ${record['Currency Code']}`
+                        : record['Total Amount'] || '-'}
                     </div>
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">Company Card</label>
-                      <select
-                        value={filters.companyCardUsed}
-                        onChange={(e) => setFilters({...filters, companyCardUsed: e.target.value})}
-                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        {getUniqueValues('Company Card Used').map((value, idx) => (
-                          <option key={idx} value={value}>
-                            {value || 'All'}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">Company</label>
-                      <select
-                        value={filters.company}
-                        onChange={(e) => setFilters({...filters, company: e.target.value})}
-                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        {getUniqueValues('Company').map((value, idx) => (
-                          <option key={idx} value={value}>
-                            {value || 'All'}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block text-xs font-medium text-muted-foreground mb-1">Project</label>
-                      <select
-                        value={filters.project}
-                        onChange={(e) => setFilters({...filters, project: e.target.value})}
-                        className="w-full px-3 py-1.5 text-sm border border-border rounded bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        {getUniqueValues('Project').map((value, idx) => (
-                          <option key={idx} value={value}>
-                            {value || 'All'}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      onClick={clearFilters}
-                      className="px-4 py-1.5 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors flex items-center gap-1"
-                    >
-                      <X className="w-4 h-4" />
-                      Clear
-                    </button>
                   </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    Showing {filteredData.length} of {tableData.length} records
-                  </div>
-                </div>
-
-                {/* Table */}
-                <div className="relative overflow-x-auto" style={{ maxHeight: '400px' }}>
-                  <table className="w-full divide-y divide-border">
-                    <thead className="bg-muted sticky top-0 z-10">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                          Date
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                          From
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                          Username
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                          Total Amount
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                          Company
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-card divide-y divide-border">
-                      {filteredData.slice(0, 100).map((record, index) => (
-                        <tr key={index} className="hover:bg-accent group">
-                          {/* Date */}
-                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                            {formatDate(record.invoiceDate)}
-                          </td>
-                          
-                          {/* From (truncated with link and tooltip) */}
-                          <td className="px-4 py-3 text-sm relative">
-                            <div className="group/tooltip">
-                              {record.webViewLink ? (
-                                <a 
-                                  href={String(record.webViewLink)} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                                >
-                                  {truncateText(record.From, 25)}
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
-                              ) : (
-                                <span>{truncateText(record.From, 25)}</span>
-                              )}
-                              
-                              {/* Tooltip with full details - Fixed to bottom-right */}
-                              {(record.name || record.shortDescription || record.invoiceNumber || record.To || record.card || record.dueDate || record.Project || record['Company Card Used'] || record['User Description']) && (
-                                <div className="invisible group-hover/tooltip:visible fixed bottom-4 right-4 w-96 p-4 bg-gray-900 text-white text-xs rounded-lg shadow-2xl z-50 border border-gray-700">
-                                  <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
-                                    {record.name && (
-                                      <div><span className="font-semibold text-blue-300">Name:</span> <span className="text-gray-100">{record.name}</span></div>
-                                    )}
-                                    {record.shortDescription && (
-                                      <div><span className="font-semibold text-blue-300">Description:</span> <span className="text-gray-100">{record.shortDescription}</span></div>
-                                    )}
-                                    {record.invoiceNumber && (
-                                      <div><span className="font-semibold text-blue-300">Invoice #:</span> <span className="text-gray-100">{record.invoiceNumber}</span></div>
-                                    )}
-                                    {record.From && (
-                                      <div><span className="font-semibold text-blue-300">From:</span> <span className="text-gray-100">{record.From}</span></div>
-                                    )}
-                                    {record.To && (
-                                      <div><span className="font-semibold text-blue-300">To:</span> <span className="text-gray-100">{record.To}</span></div>
-                                    )}
-                                    {record.card && (
-                                      <div><span className="font-semibold text-blue-300">Card:</span> <span className="text-gray-100">{record.card}</span></div>
-                                    )}
-                                    {record.dueDate && (
-                                      <div><span className="font-semibold text-blue-300">Due Date:</span> <span className="text-gray-100">{formatDate(record.dueDate)}</span></div>
-                                    )}
-                                    {record.Project && (
-                                      <div><span className="font-semibold text-blue-300">Project:</span> <span className="text-gray-100">{record.Project}</span></div>
-                                    )}
-                                    {record.Company && (
-                                      <div><span className="font-semibold text-blue-300">Company:</span> <span className="text-gray-100">{record.Company}</span></div>
-                                    )}
-                                    {record['Company Card Used'] && (
-                                      <div><span className="font-semibold text-blue-300">Company Card:</span> <span className="text-gray-100">{record['Company Card Used']}</span></div>
-                                    )}
-                                    {record['User Description'] && (
-                                      <div><span className="font-semibold text-blue-300">User Desc:</span> <span className="text-gray-100">{record['User Description']}</span></div>
-                                    )}
-                                    {record['Currency Code'] && (
-                                      <div><span className="font-semibold text-blue-300">Currency:</span> <span className="text-gray-100">{record['Currency Code']}</span></div>
-                                    )}
-                                    {record.Country && (
-                                      <div><span className="font-semibold text-blue-300">Country:</span> <span className="text-gray-100">{record.Country}</span></div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          
-                          {/* Username */}
-                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                            {record.username || '-'}
-                          </td>
-                          
-                          {/* Total Amount with Currency Code */}
-                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                            {record['Total Amount'] && record['Currency Code'] 
-                              ? `${record['Total Amount']} ${record['Currency Code']}`
-                              : record['Total Amount'] || '-'}
-                          </td>
-                          
-                          {/* Company */}
-                          <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                            {record.Company || '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+                ))}
+              </div>
             )}
+            </div>
+
+            {/* Activity Widget - Comments and Audits */}
+            <div className="bg-card rounded-lg border border-border">
+              <div className="px-6 py-4 border-b border-border">
+              <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
+              <p className="text-sm text-muted-foreground">Latest comments and audits from Projects and Landplots</p>
+            </div>
+
+            {activityLoading ? (
+              <div className="p-6 text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                <p className="mt-2 text-muted-foreground">Loading activity...</p>
+              </div>
+            ) : activityError ? (
+              <div className="p-6 text-center">
+                <p className="text-red-500">Error: {activityError}</p>
+                <button
+                  onClick={fetchActivityData}
+                  className="mt-2 px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : activityData.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-muted-foreground">No activity available</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {activityData.slice(0, 10).map((activity, index) => (
+                  <div key={index} className="px-6 py-3 hover:bg-accent transition-colors">
+                    <div className="flex items-start gap-3">
+                      {/* Icon based on type */}
+                      <div className={`mt-1 px-2 py-1 rounded text-xs font-semibold ${
+                        activity.type === 'comment' 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : 'bg-purple-100 text-purple-800'
+                      }`}>
+                        {activity.type === 'comment' ? '💬' : '📋'}
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {activity.source}:
+                          </span>
+                          <span className="text-xs font-semibold text-foreground">
+                            {truncateText(activity.sourceName, 40)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-foreground line-clamp-2">
+                          {activity.content}
+                        </p>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {formatDate(activity.timestamp)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            </div>
           </div>
         )}
 
