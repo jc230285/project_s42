@@ -1,102 +1,70 @@
-@echo off@echo off@echo off@echo off
+@echo off
+setlocal enabledelayedexpansion
 
-
-
-echo ============================================setlocal enabledelayedexpansion
-
+echo ============================================
 echo   Project S42 Server Management Script
-
-echo ============================================setlocal enabledelayedexpansionecho ============================================
-
+echo ============================================
 echo.
 
-echo Choose your deployment mode:echo ============================================
+echo Cleaning up existing processes...
+echo Killing all Node.js processes...
+taskkill /F /IM node.exe >nul 2>&1
+taskkill /F /IM npm.cmd >nul 2>&1
 
-echo 1. Development Mode (NPM:3000 + FastAPI:8000)
+echo Killing all Python processes...
+taskkill /F /IM python.exe >nul 2>&1
+taskkill /F /IM pythonw.exe >nul 2>&1
 
-echo 2. Docker Mode (Frontend:3150 + Backend:8150) echo   Project S42 Server Management Scriptecho   Project S42 Server Management Script
-
-echo 3. Stop all servers
-
-echo 4. Check server statusecho ============================================
-
-echo.
-
-echo [Auto-starting Development Mode in 2 seconds...]echo.echo ============================================echo ============================================
-
-echo.
-
-echo Choose your deployment mode:
-
-timeout /t 2 >nul
-
-set choice=1echo 1. Development Mode (NPM:3000 + FastAPI:8000)echo   Project S42 Server Management Scriptecho.
-
-
-
-if "%choice%"=="1" goto dev_modeecho 2. Docker Mode (Frontend:3150 + Backend:8150) 
-
-if "%choice%"=="2" goto docker_mode
-
-if "%choice%"=="3" goto stop_serversecho 3. Install as Windows Servicesecho ============================================echo Choose your deployment mode:
-
-if "%choice%"=="4" goto check_status
-
-goto dev_modeecho 4. Stop all servers
-
-
-
-:dev_modeecho 5. Check server statusecho.echo 1. Development Mode (NPM:3000 + FastAPI:8000)
+echo Cleaning up processes on ports 8000 and 3000...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000 "') do taskkill /f /pid %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000 "') do taskkill /f /pid %%a >nul 2>&1
 
 echo.
-
-echo ========================================echo.
-
+echo ============================================
 echo   Starting Development Mode
-
-echo   Frontend: http://localhost:3000echo [Defaulting to option 1 in 2 seconds...]echo Choose your deployment mode:echo 2. Docker Mode (Frontend:3150 + Backend:8150) 
-
+echo   Frontend: http://localhost:3000
 echo   Backend: http://localhost:8000
-
-echo ========================================echo.
-
+echo ============================================
 echo.
-
-echo 1. Development Mode (NPM:3000 + FastAPI:8000)echo 3. Install as Windows Services
 
 echo Checking prerequisites...
-
-python --versionset /p choice="Enter your choice (1-5): " 
+python --version
+if %errorlevel% neq 0 (
+    echo ERROR: Python is not installed or not in PATH
+    pause
+    exit /b 1
+)
 
 node --version
+if %errorlevel% neq 0 (
+    echo ERROR: Node.js is not installed or not in PATH
+    pause
+    exit /b 1
+)
 
-echo.echo 2. Docker Mode (Frontend:3150 + Backend:8150) echo 4. Stop all servers
-
-
-
-echo Cleaning up processes on ports 8000 and 3000...REM If no input after prompt, wait 2 seconds then default to 1
-
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000 "') do taskkill /f /pid %%a >nul 2>&1
-
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000 "') do taskkill /f /pid %%a >nul 2>&1if "!choice!"=="" (echo 3. Install as Windows Servicesecho 5. Check server status
-
-timeout /t 2 /nobreak >nul
-
-    timeout /t 2 >nul
-
+echo.
 echo Starting backend server on port 8000...
+cd /d %~dp0backend
+start "S42 Backend" cmd /k "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
-cd /d %~dp0    set choice=1echo 4. Stop all serversecho.
-
-start "S42 Backend" cmd /k "python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload"
-
-    echo Defaulting to option 1 - Development Mode
+timeout /t 3 /nobreak >nul
 
 echo Starting frontend server on port 3000...
+cd /d %~dp0frontend
+start "S42 Frontend" cmd /k "npm run dev"
 
-cd /d %~dp0frontend)echo 5. Check server statusset /p choice="Enter your choice (1-5): "
+timeout /t 5 /nobreak >nul
 
-start "S42 Frontend" cmd /k "npm run dev -- --port 3000"
+echo.
+echo ============================================
+echo Development servers started!
+echo Frontend: http://localhost:3000
+echo Backend: http://localhost:8000
+echo Backend API Docs: http://localhost:8000/docs
+echo ============================================
+echo.
+
+pause
 
 
 
