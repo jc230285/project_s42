@@ -3,10 +3,12 @@ import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
 import { hasScale42Access } from '@/lib/auth-utils';
 import dynamic from 'next/dynamic';
-import 'react-quill/dist/quill.snow.css';
 
 // Dynamically import ReactQuill to avoid SSR issues
-const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
+const ReactQuill = dynamic(() => import('react-quill'), { 
+  ssr: false,
+  loading: () => <div>Loading editor...</div>
+});
 
 interface SchemaField {
   "Field Name": string;

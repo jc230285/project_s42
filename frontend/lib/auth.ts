@@ -19,7 +19,7 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user, account }) {
-      console.log('JWT: Callback triggered', { user: !!user, email: user?.email, tokenEmail: token?.email });
+      console.log('🔐 JWT: Callback triggered', { user: !!user, email: user?.email, tokenEmail: token?.email });
       
       // Always fetch user data if we have an email
       const email = user?.email || token?.email;
@@ -35,26 +35,29 @@ export const authOptions: NextAuthOptions = {
             ? (process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'https://s42api.edbmotte.com')
             : (process.env.BACKEND_BASE_URL || process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:8000');
             
-          console.log('JWT: Fetching user data from:', `${backendUrl}/auth/user-groups/${encodeURIComponent(email)}`);
+          const url = `${backendUrl}/auth/user-groups/${encodeURIComponent(email)}`;
+          console.log('🔍 JWT: Fetching user data from:', url);
           
-          const response = await fetch(`${backendUrl}/auth/user-groups/${encodeURIComponent(email)}`);
+          const response = await fetch(url);
           
-          console.log('JWT: Response status:', response.status);
+          console.log('📡 JWT: Response status:', response.status);
           
           if (response.ok) {
             const userData = await response.json();
-            console.log('JWT: User data from backend:', userData);
+            console.log('✅ JWT: User data from backend:', userData);
             // Handle the backend response format
             token.groups = userData.groups ? userData.groups.map((g: any) => g.name) : [];
             token.userId = userData.user ? userData.user.id : null;
-            console.log('JWT: Assigned groups to token:', token.groups);
+            console.log('✅ JWT: Assigned groups to token:', token.groups);
           } else {
             const errorText = await response.text();
-            console.error('JWT: Failed to fetch user data:', response.status, response.statusText, errorText);
+            console.error('❌ JWT: Failed to fetch user data:', response.status, response.statusText, errorText);
+            console.error('❌ JWT: Backend URL was:', url);
             token.groups = [];
           }
         } catch (error) {
-          console.error('JWT: Error fetching user groups:', error);
+          console.error('❌ JWT: Error fetching user groups:', error);
+          console.error('❌ JWT: Error details:', error instanceof Error ? error.message : 'Unknown error');
           token.groups = [];
         }
       }

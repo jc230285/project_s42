@@ -182,6 +182,8 @@ export default function UsersPage() {
       const authToken = btoa(JSON.stringify(userInfo));
       const baseURL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL;
 
+      console.log('🔧 Creating group:', { name: newGroupName, domain: newGroupDomain, description: newGroupDescription });
+
       const response = await fetch(`${baseURL}/groups`, {
         method: 'POST',
         headers: {
@@ -190,24 +192,30 @@ export default function UsersPage() {
         },
         body: JSON.stringify({
           name: newGroupName,
-          domain: newGroupDomain,
-          description: newGroupDescription
+          domain: newGroupDomain || null,
+          description: newGroupDescription || null
         })
       });
 
-      if (response.ok) {
-        toast.success(`Group "${newGroupName}" created successfully`);
-        setShowCreateGroupModal(false);
-        setNewGroupName('');
-        setNewGroupDomain('');
-        setNewGroupDescription('');
-        fetchData(); // Refresh data
-      } else {
+      console.log('📡 Create group response status:', response.status);
+
+      if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
         const errorMessage = errorData.detail || `Failed to create group (${response.status})`;
+        console.error('❌ Create group error:', response.status, errorData);
         toast.error(errorMessage);
-        console.error('Failed to create group:', response.status, errorData);
+        return;
       }
+
+      const result = await response.json();
+      console.log('✅ Group created:', result);
+      
+      toast.success(`Group "${newGroupName}" created successfully`);
+      setShowCreateGroupModal(false);
+      setNewGroupName('');
+      setNewGroupDomain('');
+      setNewGroupDescription('');
+      fetchData(); // Refresh data
     } catch (error) {
       console.error('Error creating group:', error);
       toast.error('Error creating group. Please check the console for details.');

@@ -45,7 +45,7 @@ if %errorlevel% neq 0 (
 echo.
 echo Starting backend server on port 8000...
 cd /d %~dp0backend
-start "S42 Backend" cmd /k "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+start "S42 Backend" cmd /k "set NOCODB_API_URL=https://nocodb.edbmotte.com && set NOCODB_API_TOKEN=K7_vnucrg7hRtRQT4fYkkOacFAd8jnIpAtSf8bgG && set NOCODB_BASE_ID=pjqgy4ri85jks06 && set DB_HOST=10.1.8.51 && set DB_USER=s42project && set DB_PASSWORD=9JA_)j(WSqJUJ9Y] && set DB_NAME=nocodb && set DB_PORT=3306 && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
 timeout /t 3 /nobreak >nul
 

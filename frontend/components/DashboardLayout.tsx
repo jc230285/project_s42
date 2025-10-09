@@ -28,6 +28,7 @@ import { DynamicMenu } from '@/components/DynamicMenu';
 function DashboardLayout({ children, initialSidebarCollapsed = false, contentClassName, disableChat = false }: { children: React.ReactNode, initialSidebarCollapsed?: boolean, contentClassName?: string, disableChat?: boolean }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(!initialSidebarCollapsed);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: session } = useSession();
   const router = useRouter();
 
@@ -150,14 +151,34 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Full-height Sidebar */}
+      {/* Mobile Header - Only visible on mobile */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-card border-b border-border h-16 flex items-center px-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 hover:bg-accent"
+        >
+          <Menu className="h-6 w-6" />
+        </Button>
+        <img
+          src="https://static.wixstatic.com/media/02157e_2734ffe4f4d44b319f9cc6c5f92628bf~mv2.png/v1/fill/w_506,h_128,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Scale42%20Logo%200_1%20-%20White%20-%202kpx.png"
+          alt="Scale42 Logo"
+          className="h-8 w-auto max-w-[140px] object-contain ml-3"
+        />
+      </div>
+
+      {/* Sidebar - Desktop: always visible, Mobile: slide-in */}
       <aside
         className={`${
           isSidebarOpen ? 'w-64' : 'w-16'
-        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col print:hidden`}
+        } bg-card border-r border-border transition-all duration-300 ease-in-out flex flex-col print:hidden
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+        lg:translate-x-0 fixed lg:relative top-0 left-0 bottom-0 z-50 lg:z-auto
+        lg:top-auto lg:left-auto lg:bottom-auto`}
       >
-        {/* Sidebar Header with Logo and Toggle */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
+        {/* Sidebar Header with Logo and Toggle - Desktop only */}
+        <div className="hidden lg:flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center">
             <Button
               variant="ghost"
@@ -177,17 +198,32 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
           </div>
         </div>
 
+        {/* Mobile close button and spacer */}
+        <div className="lg:hidden h-16 border-b border-border flex items-center justify-end px-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="p-2 hover:bg-accent"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
+
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4">
           {/* Dynamic Menu based on user permissions */}
           <DynamicMenu 
-            isSidebarOpen={isSidebarOpen}
-            onNavigate={(path) => router.push(path)}
+            isSidebarOpen={isSidebarOpen || isMobileMenuOpen}
+            onNavigate={(path) => {
+              router.push(path);
+              setIsMobileMenuOpen(false); // Close mobile menu after navigation
+            }}
           />
           
           {/* User Section */}
           <div className="mt-auto pt-4 border-t border-border">
-            {session?.user?.email && isSidebarOpen && (
+            {session?.user?.email && (isSidebarOpen || isMobileMenuOpen) && (
               <div className="px-2 py-1 mb-2 text-xs text-muted-foreground truncate">
                 {session.user.email}
               </div>
@@ -197,23 +233,23 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
               <Button
                 variant="ghost"
                 className={`w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10 ${
-                  !isSidebarOpen ? 'px-2' : ''
+                  !isSidebarOpen && !isMobileMenuOpen ? 'px-2' : ''
                 }`}
                 onClick={handleSignOut}
-                title={!isSidebarOpen ? 'Logout' : undefined}
+                title={!isSidebarOpen && !isMobileMenuOpen ? 'Logout' : undefined}
               >
                 <LogOut className="h-5 w-5 flex-shrink-0" />
-                {isSidebarOpen && <span className="ml-3">Logout</span>}
+                {(isSidebarOpen || isMobileMenuOpen) && <span className="ml-3">Logout</span>}
               </Button>
             ) : (
               <Link href="/login">
                 <Button
                   variant="ghost"
-                  className={`w-full justify-start ${!isSidebarOpen ? 'px-2' : ''}`}
-                  title={!isSidebarOpen ? 'Login' : undefined}
+                  className={`w-full justify-start ${!isSidebarOpen && !isMobileMenuOpen ? 'px-2' : ''}`}
+                  title={!isSidebarOpen && !isMobileMenuOpen ? 'Login' : undefined}
                 >
                   <LogIn className="h-5 w-5 flex-shrink-0" />
-                  {isSidebarOpen && <span className="ml-3">Login</span>}
+                  {(isSidebarOpen || isMobileMenuOpen) && <span className="ml-3">Login</span>}
                 </Button>
               </Link>
             )}
@@ -222,18 +258,18 @@ function DashboardLayout({ children, initialSidebarCollapsed = false, contentCla
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col lg:ml-0 mt-16 lg:mt-0">
         {/* Main Content */}
         <main className={`flex-1 overflow-y-auto ${contentClassName ?? 'p-6'}`}>
           {children}
         </main>
       </div>
 
-      {/* Mobile Overlay */}
-      {isSidebarOpen && (
+      {/* Mobile Overlay - Shows when mobile menu is open */}
+      {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Body, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Query, Body, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -87,12 +87,12 @@ app = FastAPI(
 # Custom CORS middleware - handles all CORS requests
 @app.middleware("http")
 async def cors_handler(request, call_next):
-    print(f"🌐 CORS Request: {request.method} {request.url}")
-    print(f"🔍 Origin: {request.headers.get('origin', 'None')}")
-    print(f"📋 Headers: {dict(request.headers)}")
+    print(f"?? CORS Request: {request.method} {request.url}")
+    print(f"?? Origin: {request.headers.get('origin', 'None')}")
+    print(f"?? Headers: {dict(request.headers)}")
     
     if request.method == "OPTIONS":
-        print("✅ Handling OPTIONS preflight request")
+        print("? Handling OPTIONS preflight request")
         return JSONResponse(
             content={"message": "OK"},
             headers={
@@ -146,7 +146,7 @@ def get_user_name_from_email(email: str) -> str:
         conn = mysql.connector.connect(
             host=os.getenv("DB_HOST", "10.1.8.51"),
             user=os.getenv("DB_USER", "s42project"),
-            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            password=os.getenv("DB_PASSWORD", "s42project"),
             database=os.getenv("DB_NAME", "nocodb"),
             port=int(os.getenv("DB_PORT", "3306")),
         )
@@ -184,7 +184,7 @@ def get_user_names_batch(emails: list) -> dict:
         conn = mysql.connector.connect(
             host=os.getenv("DB_HOST", "10.1.8.51"),
             user=os.getenv("DB_USER", "s42project"),
-            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            password=os.getenv("DB_PASSWORD", "s42project"),
             database=os.getenv("DB_NAME", "nocodb"),
             port=int(os.getenv("DB_PORT", "3306")),
         )
@@ -255,15 +255,15 @@ def process_schema_data(user_token: Optional[str] = None):
                         if title:
                             subcategory_order_map[title] = order
             
-            print(f"📋 Loaded {len(category_order_map)} category options and {len(subcategory_order_map)} subcategory options from table structure")
+            print(f"?? Loaded {len(category_order_map)} category options and {len(subcategory_order_map)} subcategory options from table structure")
         else:
-            print(f"⚠️  Failed to fetch table structure (status {table_response.status_code}), using fallback ordering")
+            print(f"??  Failed to fetch table structure (status {table_response.status_code}), using fallback ordering")
     except Exception as e:
-        print(f"⚠️  Exception fetching table structure: {e}, using fallback ordering")
+        print(f"??  Exception fetching table structure: {e}, using fallback ordering")
     
     # If we couldn't get the dropdown orders, use fallback ordering
     if not category_order_map:
-        print("📋 Using fallback category ordering")
+        print("?? Using fallback category ordering")
         FALLBACK_CATEGORY_ORDER = [
             "Database", "Project", "Contact", "Summary", "Location", "General",
             "LandPlot", "Power", "Connectivity", "AI"
@@ -341,10 +341,10 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     Verify user session via Authorization header
     Expected format: "Bearer {base64_encoded_user_info}"
     """
-    print(f"🔐 AUTH CHECK: {authorization}", flush=True)
+    print(f"?? AUTH CHECK: {authorization}", flush=True)
     
     if not authorization:
-        print("❌ NO AUTH HEADER", flush=True)
+        print("? NO AUTH HEADER", flush=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header required",
@@ -438,7 +438,7 @@ def get_db():
     conn = mysql.connector.connect(
         host=os.getenv("DB_HOST", "10.1.8.51"),  # Use your working IP
         user=os.getenv("DB_USER", "s42project"),
-        password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),  # Use your working password
+        password=os.getenv("DB_PASSWORD", "s42project"),  # Use your working password
         database=os.getenv("DB_NAME", "nocodb"),
         port=int(os.getenv("DB_PORT", "3306")),
     )
@@ -586,16 +586,16 @@ def get_projects(current_user: dict = Depends(get_current_user), partner_filter:
         data = response.json()
         projects = data.get("list", [])
         
-        print(f"📊 Projects API: Retrieved {len(projects)} projects from NocoDB")
+        print(f"?? Projects API: Retrieved {len(projects)} projects from NocoDB")
         
         # Apply partner filter if provided
         if partner_filter and partner_filter.strip():
             projects = [p for p in projects if p.get("Primary Project Partner") == partner_filter]
-            print(f"📊 Projects API: After partner filter '{partner_filter}': {len(projects)} projects")
+            print(f"?? Projects API: After partner filter '{partner_filter}': {len(projects)} projects")
         
         # Sort projects by Project Priority - higher priority first
         projects.sort(key=lambda x: x.get("Project Priority", 0), reverse=True)
-        print(f"📊 Projects API: Sorted {len(projects)} projects by priority (Project Priority)")
+        print(f"?? Projects API: Sorted {len(projects)} projects by priority (Project Priority)")
         
         # Helper function to parse plot information
         def parse_plot_info(plot_id_string):
@@ -697,7 +697,7 @@ from fastapi.responses import JSONResponse
 @app.options("/projects/schema")
 async def options_projects_schema():
     """Handle OPTIONS requests for /projects/schema CORS preflight"""
-    print("✅ Specific OPTIONS handler for /projects/schema")
+    print("? Specific OPTIONS handler for /projects/schema")
     return JSONResponse(
         content={"message": "OK"},
         headers={
@@ -712,7 +712,7 @@ async def options_projects_schema():
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
     """Handle all other OPTIONS requests for CORS preflight"""
-    print(f"✅ Universal OPTIONS handler for path: /{full_path}")
+    print(f"? Universal OPTIONS handler for path: /{full_path}")
     return JSONResponse(
         content={"message": "OK"},
         headers={
@@ -731,7 +731,7 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
         # Get user-specific NocoDB token, fallback to environment token
         user_token = None
         user_email = current_user.get('email')
-        print(f"🔑 Getting API token for user: {user_email}")
+        print(f"?? Getting API token for user: {user_email}")
         
         if user_email:
             try:
@@ -739,19 +739,19 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
                 user_data = cursor.fetchone()
-                print(f"🔍 Database query result for {user_email}: {user_data}")
+                print(f"?? Database query result for {user_email}: {user_data}")
                 if user_data and user_data['nocodb_api']:
                     user_token = user_data['nocodb_api']
-                    print(f"✅ Using user-specific NocoDB token for {user_email}: {str(user_token)[:20]}...")
+                    print(f"? Using user-specific NocoDB token for {user_email}: {str(user_token)[:20]}...")
                 else:
-                    print(f"⚠️ No user-specific token found for {user_email}, using admin token")
+                    print(f"?? No user-specific token found for {user_email}, using admin token")
                     print(f"   User data: {user_data}")
                     print(f"   nocodb_api field: {user_data.get('nocodb_api') if user_data else 'No user found'}")
                 cursor.close()
@@ -822,7 +822,7 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
         data = response.json()
         schema_records = data.get("list", [])
         
-        print(f"📊 Raw NocoDB data structure:")
+        print(f"?? Raw NocoDB data structure:")
         print(f"   - Total records: {len(schema_records)}")
         if schema_records:
             print(f"   - First record keys: {list(schema_records[0].keys())}")
@@ -890,10 +890,10 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
             
             if field_name == "Category" and field_type == "SingleSelect":
                 category_options = parse_select_options(options_raw)
-                print(f"🏷️ Found Category options: {category_options}")
+                print(f"??? Found Category options: {category_options}")
             elif field_name == "Subcategory" and field_type == "SingleSelect":
                 subcategory_options = parse_select_options(options_raw)
-                print(f"🏷️ Found Subcategory options: {subcategory_options}")
+                print(f"??? Found Subcategory options: {subcategory_options}")
         
         # Helper function to get order from options
         def get_option_order(value, options_list):
@@ -918,7 +918,7 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
             category_order = get_option_order(category_value, category_options)
             subcategory_order = get_option_order(subcategory_value, subcategory_options)
             
-            print(f"📋 Processing field '{record.get('Field Name')}': Category='{category_value}' (order: {category_order}), Subcategory='{subcategory_value}' (order: {subcategory_order})")
+            print(f"?? Processing field '{record.get('Field Name')}': Category='{category_value}' (order: {category_order}), Subcategory='{subcategory_value}' (order: {subcategory_order})")
             
             # Map the NocoDB fields to frontend expected format - with dynamic category_order and subcategory_order
             processed_record = {
@@ -960,8 +960,8 @@ def get_schema_data(current_user: dict = Depends(get_current_user)):
         # Sort the processed records
         sorted_records = sorted(processed_records, key=get_sort_key)
         
-        print(f"✅ Processed {len(sorted_records)} schema records for frontend")
-        print(f"📋 Found {len(category_options)} category options and {len(subcategory_options)} subcategory options")
+        print(f"? Processed {len(sorted_records)} schema records for frontend")
+        print(f"?? Found {len(category_options)} category options and {len(subcategory_options)} subcategory options")
         
         return JSONResponse(
             content={
@@ -1045,7 +1045,7 @@ def get_plots_data(
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -1129,17 +1129,17 @@ def get_plots_data(
             return dict(vals)
 
         # 2a) Load selected land plot rows directly from NocoDB
-        debug_print(f"📊 Backend: Fetching {len(selected_plot_ids)} plots: {selected_plot_ids}")
+        debug_print(f"?? Backend: Fetching {len(selected_plot_ids)} plots: {selected_plot_ids}")
         for pid in selected_plot_ids:
             try:
                 url = f"{nocodb_api_url}/api/v2/tables/{LANDPLOTS_TABLE_ID}/records/{pid}"
                 r = requests.get(url, headers=headers, verify=False)
                 if r.status_code != 200:
-                    debug_print(f"❌ Backend: Failed to fetch plot {pid}: status {r.status_code}")
+                    debug_print(f"? Backend: Failed to fetch plot {pid}: status {r.status_code}")
                     # Skip missing plots instead of failing entire request
                     continue
                 row = r.json() or {}
-                debug_print(f"📊 Backend: Plot {pid} row keys: {list(row.keys())[:10]}")  # First 10 keys
+                debug_print(f"?? Backend: Plot {pid} row keys: {list(row.keys())[:10]}")  # First 10 keys
 
                 # Determine FK to project from common patterns and relation payloads
                 fk_project_id = None
@@ -1153,7 +1153,7 @@ def get_plots_data(
                 ]:
                     if key in row:
                         val = row.get(key)
-                        debug_print(f"📊 Backend: Plot {pid} found key '{key}' with value type: {type(val).__name__}, value: {val if not isinstance(val, dict) else 'dict'}")
+                        debug_print(f"?? Backend: Plot {pid} found key '{key}' with value type: {type(val).__name__}, value: {val if not isinstance(val, dict) else 'dict'}")
                         # If relation is an array/dict, extract id
                         if isinstance(val, dict) and "id" in val:
                             val = val.get("id")
@@ -1162,7 +1162,7 @@ def get_plots_data(
                         # Normalize to int if numeric
                         if isinstance(val, (int, str)) and str(val).isdigit():
                             fk_project_id = int(val)
-                            debug_print(f"✅ Backend: Plot {pid} FK resolved to project {fk_project_id} from key '{key}'")
+                            debug_print(f"? Backend: Plot {pid} FK resolved to project {fk_project_id} from key '{key}'")
                             break
 
                 # Fallback A: try via schema-mapped values using the field ID
@@ -1231,10 +1231,10 @@ def get_plots_data(
                     plots_by_pid.setdefault(pid, []).append(p)
             
             # Debug logging
-            debug_print(f"📊 Backend: plots_by_pid keys: {list(plots_by_pid.keys())}")
-            debug_print(f"📊 Backend: projects_fk_set: {sorted(list(projects_fk_set))}")
+            debug_print(f"?? Backend: plots_by_pid keys: {list(plots_by_pid.keys())}")
+            debug_print(f"?? Backend: projects_fk_set: {sorted(list(projects_fk_set))}")
             for pid, plist in plots_by_pid.items():
-                debug_print(f"📊 Backend: Project {pid} has {len(plist)} plots")
+                debug_print(f"?? Backend: Project {pid} has {len(plist)} plots")
 
             for proj_id in sorted(projects_fk_set):
                 try:
@@ -1244,7 +1244,7 @@ def get_plots_data(
                         continue
                     prow = r.json() or {}
                     project_plots = plots_by_pid.get(proj_id, [])
-                    debug_print(f"📊 Backend: Project {proj_id} getting {len(project_plots)} plots")
+                    debug_print(f"?? Backend: Project {proj_id} getting {len(project_plots)} plots")
                     project_obj = {
                         "_db_id": prow.get("id", proj_id),
                         "values": map_values_by_field_id(prow, schema_by_table["Projects"]),
@@ -1252,7 +1252,7 @@ def get_plots_data(
                     }
                     projects.append(project_obj)
                 except Exception as e:
-                    print(f"❌ Backend: Error loading project {proj_id}: {str(e)}")
+                    print(f"? Backend: Error loading project {proj_id}: {str(e)}")
                     continue
         
         # -------------------------
@@ -1562,15 +1562,15 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
         "query_repr": repr(query_request.query) if query_request.query else "None"
     })
     
-    print(f"🚀 NOCODB QUERY ENDPOINT CALLED", flush=True)
-    print(f"🔍 Received query request: '{query_request.query}'", flush=True)
-    print(f"👤 Current user: {current_user}", flush=True)
+    print(f"?? NOCODB QUERY ENDPOINT CALLED", flush=True)
+    print(f"?? Received query request: '{query_request.query}'", flush=True)
+    print(f"?? Current user: {current_user}", flush=True)
     
     # Debug the query detection  
     if "v_HoyangerEnergyReport" in query_request.query:
-        print(f"⚡ DETECTED VIEW QUERY - EXECUTING SQL DIRECTLY", flush=True)
+        print(f"? DETECTED VIEW QUERY - EXECUTING SQL DIRECTLY", flush=True)
     else:
-        print(f"📊 REGULAR QUERY - USING NOCODB API", flush=True)
+        print(f"?? REGULAR QUERY - USING NOCODB API", flush=True)
     
     try:
         
@@ -1583,7 +1583,7 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -1608,13 +1608,13 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
 
         # Check if this is a direct SQL query (contains v_HoyangerEnergyReport view)
         if "v_HoyangerEnergyReport" in query_request.query:
-            print(f"🔍 Executing SQL query: {query_request.query}")
+            print(f"?? Executing SQL query: {query_request.query}")
             # Execute direct SQL query against the database
             try:
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -1624,9 +1624,9 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
                 cursor.execute(query_request.query)
                 rows = cursor.fetchall()
                 
-                print(f"✅ SQL query executed successfully, got {len(rows)} rows")
+                print(f"? SQL query executed successfully, got {len(rows)} rows")
                 if rows:
-                    print(f"📋 First row keys: {list(rows[0].keys())}")
+                    print(f"?? First row keys: {list(rows[0].keys())}")
                 
                 # Convert decimal and datetime objects to JSON serializable format
                 result_rows = []
@@ -1644,7 +1644,7 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
                 cursor.close()
                 conn.close()
                 
-                print(f"🎯 Returning {len(result_rows)} converted rows")
+                print(f"?? Returning {len(result_rows)} converted rows")
                 return JSONResponse(content={
                     "success": True,
                     "rows": result_rows,
@@ -1653,7 +1653,7 @@ async def execute_nocodb_query(query_request: NocoDBQuery, current_user: dict = 
                 })
                 
             except Exception as e:
-                print(f"❌ SQL query error: {str(e)}")
+                print(f"? SQL query error: {str(e)}")
                 return JSONResponse(
                     content={"error": f"SQL query error: {str(e)}"},
                     status_code=500
@@ -2088,9 +2088,22 @@ def create_group(group: CreateGroup, current_user: dict = Depends(get_current_us
         cursor.close()
         conn.close()
         
-        return JSONResponse(content={"message": "Group created successfully", "group_id": group_id})
+        return JSONResponse(content={
+            "message": "Group created successfully", 
+            "group_id": group_id, 
+            "id": group_id
+        })
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        print(f"❌ Error creating group: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            content={
+                "detail": f"Failed to create group: {str(e)}",
+                "error": str(e)  # Also include error for backward compatibility
+            }, 
+            status_code=500
+        )
 
 @app.put("/groups/{group_id}", tags=["User Management"])
 def update_group(group_id: int, group: UpdateGroup, current_user: dict = Depends(get_current_user)):
@@ -2449,14 +2462,18 @@ def debug():
         "fallback_host": "mariadb"
     }
 
-@app.put("/nocodb/update-row", tags=["nocodb"])
-async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = Depends(get_current_user)):
-    """Update a row in NocoDB table"""
+@app.post("/nocodb/create-row", tags=["nocodb"])
+async def create_nocodb_row(
+    table_id: str = Query(...),
+    row_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new row in NocoDB table using v1 API"""
     try:
         # Get user's personal API token if available, otherwise use environment token
         user_token = None
         user_email = current_user.get('email')
-        print(f"🔑 UPDATE ENDPOINT - Getting API token for user: {user_email}")
+        print(f"?? CREATE ENDPOINT - Getting API token for user: {user_email}")
         
         if user_email:
             try:
@@ -2464,21 +2481,18 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
                 user_data = cursor.fetchone()
-                print(f"🔍 UPDATE ENDPOINT - Database query result for {user_email}: {user_data}")
                 if user_data and user_data['nocodb_api']:
                     user_token = user_data['nocodb_api']
-                    print(f"✅ UPDATE ENDPOINT - Using user-specific NocoDB token for {user_email}: {str(user_token)[:20]}...")
+                    print(f"? CREATE ENDPOINT - Using user-specific NocoDB token for {user_email}")
                 else:
-                    print(f"⚠️ UPDATE ENDPOINT - No user-specific token found for {user_email}, using admin token")
-                    print(f"   User data: {user_data}")
-                    print(f"   nocodb_api field: {user_data.get('nocodb_api') if user_data else 'No user found'}")
+                    print(f"?? CREATE ENDPOINT - No user-specific token found for {user_email}, using admin token")
                 cursor.close()
                 conn.close()
             except Exception as e:
@@ -2490,34 +2504,114 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
         if not api_token:
             raise HTTPException(status_code=500, detail="No API token available")
         
-        # NocoDB v2 API endpoint - note: no record ID in URL for bulk updates
+        # NocoDB v3 API endpoint for creating records
         base_id = os.getenv("NOCODB_BASE_ID")
-        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v2/tables/{update_data.table_id}/records"
+        
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v3/data/{base_id}/{table_id}/records"
         
         headers = {
             "Content-Type": "application/json",
             "xc-token": api_token
         }
         
-        # NocoDB v2 expects an array of records with the primary key field for updates
-        update_payload = [{
-            "id": int(update_data.row_id),  # Convert to integer as NocoDB expects numeric IDs
-            **update_data.field_data
-        }]
+        # NocoDB v3 API requires fields wrapper
+        v3_payload = {
+            "fields": row_data
+        }
         
-        # Make the update request
-        print(f"🔄 Making NocoDB v2 update request:")
+        # Make the create request
+        print(f"🔄 Making NocoDB v3 create request:")
         print(f"   URL: {nocodb_url}")
-        print(f"   Payload: {update_payload}")
+        print(f"   Payload: {v3_payload}")
         print(f"   Token type: {'user' if user_token else 'admin'}")
-        print(f"   Using token: {str(api_token)[:20]}...{str(api_token)[-10:] if len(str(api_token)) > 30 else str(api_token)}")
-        print(f"   Token length: {len(str(api_token))}")
         
-        response = requests.patch(nocodb_url, json=update_payload, headers=headers, verify=False)
+        response = requests.post(nocodb_url, json=v3_payload, headers=headers, verify=False)
         
-        print(f"📡 NocoDB Response: {response.status_code}")
+        print(f"?? NocoDB Response: {response.status_code}")
+        if response.status_code not in [200, 201]:
+            print(f"? Error response: {response.text}")
+        
+        if response.status_code in [200, 201]:
+            return {"success": True, "data": response.json()}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"NocoDB API error: {response.text}")
+            
+    except Exception as e:
+        print(f"? Error in create_nocodb_row: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/nocodb/update-row", tags=["nocodb"])
+async def update_nocodb_row(
+    table_id: str = Query(...),
+    record_id: str = Query(...),
+    row_data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Update a row in NocoDB table using v1 API"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+        print(f"?? UPDATE ENDPOINT - Getting API token for user: {user_email}")
+        
+        if user_email:
+            try:
+                # Get user's NocoDB token from database
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                print(f"?? UPDATE ENDPOINT - Database query result for {user_email}: {user_data}")
+                if user_data and user_data['nocodb_api']:
+                    user_token = user_data['nocodb_api']
+                    print(f"? UPDATE ENDPOINT - Using user-specific NocoDB token for {user_email}")
+                else:
+                    print(f"?? UPDATE ENDPOINT - No user-specific token found for {user_email}, using admin token")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        if not api_token:
+            raise HTTPException(status_code=500, detail="No API token available")
+        
+        # NocoDB v3 API endpoint format: /api/v3/data/{base_id}/{table_id}/records
+        base_id = os.getenv("NOCODB_BASE_ID")
+        
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v3/data/{base_id}/{table_id}/records"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token
+        }
+        
+        # NocoDB v3 API requires id and fields in the payload
+        v3_payload = {
+            "id": record_id,
+            "fields": row_data
+        }
+        
+        # Make the update request (PATCH for v3 API)
+        print(f"?? Making NocoDB v3 update request:")
+        print(f"   URL: {nocodb_url}")
+        print(f"   Payload: {v3_payload}")
+        print(f"   Token type: {'user' if user_token else 'admin'}")
+        print(f"   Using token: {str(api_token)[:20]}...")
+        
+        response = requests.patch(nocodb_url, json=v3_payload, headers=headers, verify=False)
+        
+        print(f"?? NocoDB Response: {response.status_code}")
         if response.status_code != 200:
-            print(f"❌ Error response: {response.text}")
+            print(f"? Error response: {response.text}")
         
         if response.status_code == 200:
             return {"success": True, "data": response.json()}
@@ -2525,6 +2619,7 @@ async def update_nocodb_row(update_data: NocoDBRowUpdate, current_user: dict = D
             raise HTTPException(status_code=response.status_code, detail=f"NocoDB API error: {response.text}")
             
     except Exception as e:
+        print(f"? Error in update_nocodb_row: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/nocodb/verify-update", tags=["nocodb"])
@@ -2546,7 +2641,7 @@ async def verify_nocodb_update(
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -2608,9 +2703,9 @@ async def get_nocodb_table_info(table_id: str, current_user: dict = Depends(get_
                     user_data = cursor.fetchone()
                     if user_data and user_data.get('nocodb_api'):
                         user_token = user_data['nocodb_api']
-                        print(f"✅ Using user-specific NocoDB token for {user_email}")
+                        print(f"? Using user-specific NocoDB token for {user_email}")
                     else:
-                        print(f"⚠️ No user-specific token found for {user_email}, using admin token")
+                        print(f"?? No user-specific token found for {user_email}, using admin token")
                     cursor.close()
                     conn.close()
                 except Exception as e:
@@ -2663,9 +2758,9 @@ async def get_nocodb_table_records(table_id: str, current_user: dict = Depends(g
                     user_data = cursor.fetchone()
                     if user_data and user_data.get('nocodb_api'):
                         user_token = user_data['nocodb_api']
-                        print(f"✅ Using user-specific NocoDB token for {user_email}")
+                        print(f"? Using user-specific NocoDB token for {user_email}")
                     else:
-                        print(f"⚠️ No user-specific token found for {user_email}, using admin token")
+                        print(f"?? No user-specific token found for {user_email}, using admin token")
                     cursor.close()
                     conn.close()
                 except Exception as e:
@@ -3055,19 +3150,19 @@ def update_user_login(user_data: dict, current_user: dict = Depends(get_current_
 @app.get('/api/nocodb/map-data', tags=["Map"])
 def get_nocodb_map_data(partner: str = Query("all", description="Filter by Primary Project Partner")):
     """Get map visualization data from NocoDB with site locations, coordinates, and statistics"""
-    print(f"🔍 Function called with partner: {partner}")
+    print(f"?? Function called with partner: {partner}")
     try:
-        print("🔍 Starting combined map data and stats fetch from NocoDB")
+        print("?? Starting combined map data and stats fetch from NocoDB")
         # NocoDB configuration
         nocodb_api_url = os.getenv("NOCODB_API_URL", "https://nocodb.edbmotte.com")
         api_token = os.getenv("NOCODB_API_TOKEN")
         nocodb_projects_table_id = os.getenv("NOCODB_PROJECTS_TABLE_ID", "mftsk8hkw23m8q1")
         land_plots_table_id = os.getenv("NOCODB_PLOTS_TABLE_ID", "mmqclkrvx9lbtpc")  # Use environment variable
         
-        print(f"🔑 API URL: {nocodb_api_url}")
-        print(f"🔑 Token present: {bool(api_token)}")
-        print(f"🔑 Projects table ID: {nocodb_projects_table_id}")
-        print(f"🔑 Plots table ID: {land_plots_table_id}")
+        print(f"?? API URL: {nocodb_api_url}")
+        print(f"?? Token present: {bool(api_token)}")
+        print(f"?? Projects table ID: {nocodb_projects_table_id}")
+        print(f"?? Plots table ID: {land_plots_table_id}")
         
         if not api_token:
             return JSONResponse(
@@ -3082,12 +3177,12 @@ def get_nocodb_map_data(partner: str = Query("all", description="Filter by Prima
         
         # First, fetch projects to build partner mapping
         projects_api_url = f"{nocodb_api_url}/api/v2/tables/{nocodb_projects_table_id}/records"
-        print(f"🔗 Projects API URL: {projects_api_url}")
+        print(f"?? Projects API URL: {projects_api_url}")
         projects_response = requests.get(projects_api_url, headers=headers, params={"limit": 1000}, verify=False)
         projects_response.raise_for_status()
         projects_data = projects_response.json()
-        print(f"📊 Projects data keys: {list(projects_data.keys()) if projects_data else 'None'}")
-        print(f"📊 Projects list length: {len(projects_data.get('list', [])) if projects_data else 0}")
+        print(f"?? Projects data keys: {list(projects_data.keys()) if projects_data else 'None'}")
+        print(f"?? Projects list length: {len(projects_data.get('list', [])) if projects_data else 0}")
         
         # Build mapping of project ID to partner
         project_partner_map = {}
@@ -3099,17 +3194,17 @@ def get_nocodb_map_data(partner: str = Query("all", description="Filter by Prima
                 project_partner_map[project_id] = partner_name
                 unique_projects.add(project_id)  # Track unique projects
         
-        print(f"📊 Built partner mapping for {len(project_partner_map)} projects")
-        print(f"📊 Total unique projects: {len(unique_projects)}")
+        print(f"?? Built partner mapping for {len(project_partner_map)} projects")
+        print(f"?? Total unique projects: {len(unique_projects)}")
         
         # Fetch land plots data from NocoDB
         api_url = f"{nocodb_api_url}/api/v2/tables/{land_plots_table_id}/records"
-        print(f"🌐 Making request to: {api_url}")
+        print(f"?? Making request to: {api_url}")
         response = requests.get(api_url, headers=headers, params={"limit": 1000}, verify=False)
-        print(f"✅ Response status: {response.status_code}")
+        print(f"? Response status: {response.status_code}")
         response.raise_for_status()
         data = response.json()
-        print(f"📊 Got {len(data.get('list', []))} records from NocoDB")
+        print(f"?? Got {len(data.get('list', []))} records from NocoDB")
         
         plots = []
         countries = set()
@@ -3167,14 +3262,14 @@ def get_nocodb_map_data(partner: str = Query("all", description="Filter by Prima
         
         # Filter by partner if specified (case-insensitive)
         if partner and partner != 'all' and partner != '':
-            print(f"🔍 Filtering by partner: '{partner}'")
+            print(f"?? Filtering by partner: '{partner}'")
             filtered_plots = []
             for plot in plots:
                 plot_partner = plot.get('Primary_Project_Partner', '').strip()
                 if plot_partner and plot_partner.lower() == partner.lower():
                     filtered_plots.append(plot)
             plots = filtered_plots
-            print(f"📊 After filtering: {len(plots)} plots")
+            print(f"?? After filtering: {len(plots)} plots")
         
         # Calculate statistics
         stats = {
@@ -3195,7 +3290,7 @@ def get_nocodb_map_data(partner: str = Query("all", description="Filter by Prima
         
     except Exception as e:
         import traceback
-        print(f"❌ NocoDB error: {str(e)}")
+        print(f"? NocoDB error: {str(e)}")
         print("Full traceback:")
         traceback.print_exc()
         return JSONResponse(
@@ -3275,7 +3370,7 @@ def get_companies_data(current_user: dict = Depends(get_current_user)):
         conn = mysql.connector.connect(
             host=os.getenv("DB_HOST", "10.1.8.51"),
             user=os.getenv("DB_USER", "s42project"),
-            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            password=os.getenv("DB_PASSWORD", "s42project"),
             database=os.getenv("DB_NAME", "nocodb"),
             port=int(os.getenv("DB_PORT", "3306")),
         )
@@ -3344,7 +3439,7 @@ def get_hoyanger_wise_accounts(current_user: dict = Depends(get_current_user)):
         conn = mysql.connector.connect(
             host=os.getenv("DB_HOST", "10.1.8.51"),
             user=os.getenv("DB_USER", "s42project"),
-            password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+            password=os.getenv("DB_PASSWORD", "s42project"),
             database=os.getenv("DB_NAME", "nocodb"),
             port=int(os.getenv("DB_PORT", "3306")),
         )
@@ -3453,7 +3548,7 @@ def get_nocodb_comments(table_name: str, record_id: str, current_user: dict = De
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -3609,7 +3704,7 @@ def create_nocodb_comment(table_name: str, record_id: str, comment_data: Comment
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -3688,14 +3783,14 @@ def get_comments(table_name: str, record_id: str, current_user: dict = Depends(g
         # Get user's personal API token if available, otherwise use environment token
         user_token = None
         user_email = current_user.get('email')
-        print(f"🔑 Getting API token for user: {user_email}")
+        print(f"?? Getting API token for user: {user_email}")
 
         if user_email:
             try:
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -3704,7 +3799,7 @@ def get_comments(table_name: str, record_id: str, current_user: dict = Depends(g
                 user_data = cursor.fetchone()
                 if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
                     user_token = user_data['nocodb_api']
-                    print(f"✅ Using user-specific NocoDB token")
+                    print(f"? Using user-specific NocoDB token")
                 cursor.close()
                 conn.close()
             except Exception as e:
@@ -3801,14 +3896,14 @@ def create_comment(table_name: str, record_id: str, comment_data: CommentCreate,
         user_token = None
         user_email = current_user.get('email')
         user_id = current_user.get('id', 'unknown')
-        print(f"🔑 Getting API token for user: {user_email}")
+        print(f"?? Getting API token for user: {user_email}")
 
         if user_email:
             try:
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -3817,7 +3912,7 @@ def create_comment(table_name: str, record_id: str, comment_data: CommentCreate,
                 user_data = cursor.fetchone()
                 if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
                     user_token = user_data['nocodb_api']
-                    print(f"✅ Using user-specific NocoDB token")
+                    print(f"? Using user-specific NocoDB token")
                 cursor.close()
                 conn.close()
             except Exception as e:
@@ -3909,14 +4004,14 @@ def get_audit_trail(table_name: str, record_id: str, current_user: dict = Depend
         # Get user's personal API token if available, otherwise use environment token
         user_token = None
         user_email = current_user.get('email')
-        print(f"🔑 Getting API token for user: {user_email}")
+        print(f"?? Getting API token for user: {user_email}")
 
         if user_email:
             try:
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -3925,7 +4020,7 @@ def get_audit_trail(table_name: str, record_id: str, current_user: dict = Depend
                 user_data = cursor.fetchone()
                 if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
                     user_token = user_data['nocodb_api']
-                    print(f"✅ Using user-specific NocoDB token")
+                    print(f"? Using user-specific NocoDB token")
                 cursor.close()
                 conn.close()
             except Exception as e:
@@ -4067,14 +4162,14 @@ def create_audit_entry(table_name: str, record_id: str, audit_data: dict, curren
         user_token = None
         user_email = current_user.get('email')
         user_id = current_user.get('id', 'unknown')
-        print(f"🔑 Getting API token for user: {user_email}")
+        print(f"?? Getting API token for user: {user_email}")
 
         if user_email:
             try:
                 conn = mysql.connector.connect(
                     host=os.getenv("DB_HOST", "10.1.8.51"),
                     user=os.getenv("DB_USER", "s42project"),
-                    password=os.getenv("DB_PASSWORD", "9JA_)j(WSqJUJ9Y]"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
                     database=os.getenv("DB_NAME", "nocodb"),
                     port=int(os.getenv("DB_PORT", "3306")),
                 )
@@ -4083,7 +4178,7 @@ def create_audit_entry(table_name: str, record_id: str, audit_data: dict, curren
                 user_data = cursor.fetchone()
                 if user_data and isinstance(user_data, dict) and user_data.get('nocodb_api'):
                     user_token = user_data['nocodb_api']
-                    print(f"✅ Using user-specific NocoDB token")
+                    print(f"? Using user-specific NocoDB token")
                 cursor.close()
                 conn.close()
             except Exception as e:
@@ -4176,7 +4271,7 @@ async def nocodb_audit_webhook(request: Request):
     try:
         # Get the webhook payload
         payload = await request.json()
-        print(f"🔗 Received NocoDB webhook: {json.dumps(payload, indent=2)}")
+        print(f"?? Received NocoDB webhook: {json.dumps(payload, indent=2)}")
 
         # Extract relevant data from webhook
         event_type = payload.get("type")  # AFTER_INSERT, AFTER_UPDATE, AFTER_DELETE
@@ -4216,7 +4311,7 @@ async def nocodb_audit_webhook(request: Request):
         # Get audit table ID from environment
         audit_table_id = os.getenv("NOCODB_AUDIT_TABLE_ID")
         if not audit_table_id:
-            print("⚠️  NOCODB_AUDIT_TABLE_ID not set, skipping audit entry")
+            print("??  NOCODB_AUDIT_TABLE_ID not set, skipping audit entry")
             return JSONResponse(content={"status": "skipped", "reason": "Audit table not configured"})
 
         # Get API token (use environment token for webhooks)
@@ -4224,7 +4319,7 @@ async def nocodb_audit_webhook(request: Request):
         nocodb_api_url = os.getenv("NOCODB_API_URL")
 
         if not api_token or not nocodb_api_url:
-            print("⚠️  NocoDB API credentials not set, skipping audit entry")
+            print("??  NocoDB API credentials not set, skipping audit entry")
             return JSONResponse(content={"status": "skipped", "reason": "API credentials not configured"})
 
         # Create audit entry
@@ -4249,14 +4344,14 @@ async def nocodb_audit_webhook(request: Request):
         response = requests.post(api_url, json=audit_payload, headers=headers, verify=False)
 
         if response.status_code in [200, 201]:
-            print(f"✅ Audit entry created for {table_name}/{record_id} - {action}")
+            print(f"? Audit entry created for {table_name}/{record_id} - {action}")
             return JSONResponse(content={"status": "success", "audit_entry_created": True})
         else:
-            print(f"❌ Failed to create audit entry: {response.status_code} - {response.text}")
+            print(f"? Failed to create audit entry: {response.status_code} - {response.text}")
             return JSONResponse(content={"status": "error", "reason": "Failed to create audit entry"})
 
     except Exception as e:
-        print(f"❌ Webhook error: {str(e)}")
+        print(f"? Webhook error: {str(e)}")
         return JSONResponse(
             content={"status": "error", "reason": str(e)},
             status_code=500
@@ -4316,7 +4411,7 @@ async def get_management_accounts():
         }
 
     except Exception as e:
-        print(f"❌ Management accounts error: {str(e)}")
+        print(f"? Management accounts error: {str(e)}")
         return JSONResponse(
             content={"error": str(e)},
             status_code=500
@@ -4359,7 +4454,7 @@ async def create_company(request: Request):
         return {"id": new_id, "message": "Company created successfully"}
 
     except Exception as e:
-        print(f"❌ Create company error: {str(e)}")
+        print(f"? Create company error: {str(e)}")
         return JSONResponse(
             content={"error": str(e)},
             status_code=500
@@ -4401,14 +4496,14 @@ async def create_account(request: Request):
         return {"id": new_id, "message": "Account created successfully"}
 
     except Exception as e:
-        print(f"❌ Create account error: {str(e)}")
+        print(f"? Create account error: {str(e)}")
         return JSONResponse(
             content={"error": str(e)},
             status_code=500
         )
 
 # ===================================================================
-# 📄 PAGE ACCESS CONTROL MANAGEMENT  
+# ?? PAGE ACCESS CONTROL MANAGEMENT  
 # ===================================================================
 
 class PageCreate(BaseModel):
@@ -4451,31 +4546,31 @@ async def reorder_pages(order_update: BulkPageOrderUpdate):
         # Debug: Check if column exists
         cursor.execute("SHOW COLUMNS FROM pages LIKE 'display_order'")
         column_check = cursor.fetchone()
-        print(f"🔍 display_order column check: {column_check}")
+        print(f"?? display_order column check: {column_check}")
         
         if not column_check:
-            print("❌ display_order column does NOT exist! Running migration...")
+            print("? display_order column does NOT exist! Running migration...")
             try:
                 cursor.execute("ALTER TABLE pages ADD COLUMN display_order INT DEFAULT 0 AFTER description")
                 conn.commit()
-                print("✅ Added display_order column")
+                print("? Added display_order column")
             except Exception as e:
-                print(f"❌ Failed to add column: {str(e)}")
+                print(f"? Failed to add column: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Column doesn't exist and migration failed: {str(e)}")
         
         for update in order_update.updates:
             sql = "UPDATE pages SET display_order = %s WHERE id = %s AND is_active = TRUE"
             params = (update.display_order, update.page_id)
-            print(f"🔍 Executing: {sql} with params {params}")
+            print(f"?? Executing: {sql} with params {params}")
             cursor.execute(sql, params)
             
         conn.commit()
         cursor.close()
         conn.close()
-        print(f"✅ Reordered pages: {[u.page_id for u in order_update.updates]}")
+        print(f"? Reordered pages: {[u.page_id for u in order_update.updates]}")
         return {"message": "Page order updated successfully"}
     except Exception as e:
-        print(f"❌ Error reordering pages: {str(e)}")
+        print(f"? Error reordering pages: {str(e)}")
         if 'conn' in locals() and 'cursor' in locals():
             try:
                 cursor.close()
@@ -4531,15 +4626,15 @@ async def create_page(page: PageCreate):
         result = response.json()
         page_id = result.get("Id") or result.get("id")
         
-        print(f"✅ Created page: {page.name} (ID: {page_id})")
+        print(f"? Created page: {page.name} (ID: {page_id})")
         
         return {"id": page_id, "message": "Page created successfully"}
         
     except requests.RequestException as e:
-        print(f"❌ API error creating page: {str(e)}")
+        print(f"? API error creating page: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error creating page: {str(e)}")
+        print(f"? Error creating page: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/pages", tags=["pages"])
@@ -4585,10 +4680,10 @@ async def get_pages():
         return pages
         
     except requests.RequestException as e:
-        print(f"❌ API error fetching pages: {str(e)}")
+        print(f"? API error fetching pages: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error fetching pages: {str(e)}")
+        print(f"? Error fetching pages: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/pages/user/{user_email}", tags=["pages"])
@@ -4656,10 +4751,10 @@ async def get_user_pages(user_email: str):
         return pages
         
     except requests.RequestException as e:
-        print(f"❌ API error fetching user pages: {str(e)}")
+        print(f"? API error fetching user pages: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error fetching user pages: {str(e)}")
+        print(f"? Error fetching user pages: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/pages/{page_id}/permissions", tags=["pages"])
@@ -4702,12 +4797,12 @@ async def update_page_permissions(page_id: int, permission_update: PagePermissio
         cursor.close()
         conn.close()
         
-        print(f"✅ Updated permissions for page {page_id}: groups {permission_update.group_ids}")
+        print(f"? Updated permissions for page {page_id}: groups {permission_update.group_ids}")
         
         return {"message": "Page permissions updated successfully"}
         
     except Exception as e:
-        print(f"❌ Error updating page permissions: {str(e)}")
+        print(f"? Error updating page permissions: {str(e)}")
         if 'conn' in locals():
             conn.rollback()
             cursor.close()
@@ -4755,10 +4850,10 @@ async def update_page(page_id: int, page_update: PageUpdate):
         
         # Execute the update
         update_query = f"UPDATE pages SET {', '.join(update_fields)} WHERE id = %s AND is_active = TRUE"
-        print(f"🔍 UPDATE query: {update_query}")
-        print(f"🔍 Values: {values}")
+        print(f"?? UPDATE query: {update_query}")
+        print(f"?? Values: {values}")
         cursor.execute(update_query, values)
-        print(f"🔍 Rows affected: {cursor.rowcount}")
+        print(f"?? Rows affected: {cursor.rowcount}")
         
         if cursor.rowcount == 0:
             cursor.close()
@@ -4769,13 +4864,13 @@ async def update_page(page_id: int, page_update: PageUpdate):
         cursor.close()
         conn.close()
         
-        print(f"✅ Updated page {page_id}")
+        print(f"? Updated page {page_id}")
         return {"message": "Page updated successfully"}
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error updating page: {str(e)}")
+        print(f"? Error updating page: {str(e)}")
         if 'conn' in locals() and 'cursor' in locals():
             try:
                 conn.rollback()
@@ -4819,15 +4914,15 @@ async def delete_page(page_id: int):
         if delete_response.status_code not in [200, 404]:
             raise HTTPException(status_code=500, detail=f"Failed to delete page: {delete_response.text}")
         
-        print(f"✅ Deleted page {page_id}")
+        print(f"? Deleted page {page_id}")
         
         return {"message": "Page deleted successfully"}
         
     except requests.RequestException as e:
-        print(f"❌ API error deleting page: {str(e)}")
+        print(f"? API error deleting page: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error deleting page: {str(e)}")
+        print(f"? Error deleting page: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/pages/initialize", tags=["pages"])
@@ -4943,10 +5038,10 @@ async def initialize_default_pages():
                     )
                 
             except Exception as e:
-                print(f"⚠️ Error creating page {page_def['name']}: {str(e)}")
+                print(f"?? Error creating page {page_def['name']}: {str(e)}")
                 continue
         
-        print(f"✅ Initialized {created_pages} default pages and assigned to public group (ID: {public_group_id})")
+        print(f"? Initialized {created_pages} default pages and assigned to public group (ID: {public_group_id})")
         
         return {
             "message": "Default pages and public group initialized successfully",
@@ -4955,14 +5050,14 @@ async def initialize_default_pages():
         }
         
     except requests.RequestException as e:
-        print(f"❌ API error initializing pages: {str(e)}")
+        print(f"? API error initializing pages: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error initializing pages: {str(e)}")
+        print(f"? Error initializing pages: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ===================================================================
-# 👥 USER MANAGEMENT WITH PUBLIC GROUP AUTO-ASSIGNMENT
+# ?? USER MANAGEMENT WITH PUBLIC GROUP AUTO-ASSIGNMENT
 # ===================================================================
 
 USERS_TABLE_ID = "users"  # Should already exist
@@ -4991,10 +5086,10 @@ async def get_all_users():
         return users
         
     except requests.RequestException as e:
-        print(f"❌ API error fetching users: {str(e)}")
+        print(f"? API error fetching users: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error fetching users: {str(e)}")
+        print(f"? Error fetching users: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/groups", tags=["users"])
@@ -5019,10 +5114,10 @@ async def get_all_groups():
         return groups
         
     except requests.RequestException as e:
-        print(f"❌ API error fetching groups: {str(e)}")
+        print(f"? API error fetching groups: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error fetching groups: {str(e)}")
+        print(f"? Error fetching groups: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/users/{user_id}/assign-to-public", tags=["users"])
@@ -5079,15 +5174,15 @@ async def assign_user_to_public_group(user_id: int):
         if assign_response.status_code != 200:
             raise HTTPException(status_code=500, detail="Failed to assign user to public group")
         
-        print(f"✅ Assigned user {user_id} to public group")
+        print(f"? Assigned user {user_id} to public group")
         
         return {"message": "User assigned to public group successfully"}
         
     except requests.RequestException as e:
-        print(f"❌ API error assigning user to public group: {str(e)}")
+        print(f"? API error assigning user to public group: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error assigning user to public group: {str(e)}")
+        print(f"? Error assigning user to public group: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/users/ensure-public-assignments", tags=["users"])
@@ -5161,7 +5256,7 @@ async def ensure_all_users_in_public_group():
                 if assign_response.status_code == 200:
                     assigned_count += 1
         
-        print(f"✅ Assigned {assigned_count} users to public group")
+        print(f"? Assigned {assigned_count} users to public group")
         
         return {
             "message": f"Assigned {assigned_count} users to public group",
@@ -5170,14 +5265,14 @@ async def ensure_all_users_in_public_group():
         }
         
     except requests.RequestException as e:
-        print(f"❌ API error ensuring public assignments: {str(e)}")
+        print(f"? API error ensuring public assignments: {str(e)}")
         raise HTTPException(status_code=500, detail=f"API error: {str(e)}")
     except Exception as e:
-        print(f"❌ Error ensuring public assignments: {str(e)}")
+        print(f"? Error ensuring public assignments: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ===================================================================
-# 🔧 QUICK FIX: MANUAL USER GROUP ASSIGNMENT
+# ?? QUICK FIX: MANUAL USER GROUP ASSIGNMENT
 # ===================================================================
 
 @app.put("/users/{user_id}/group", tags=["User Management"])
@@ -5199,12 +5294,12 @@ def assign_user_to_group_manual(user_id: int, group_id: int, current_user: dict 
         cursor.close()
         conn.close()
         
-        print(f"✅ Assigned user {user_id} to group {group_id}")
+        print(f"? Assigned user {user_id} to group {group_id}")
         
         return {"message": f"User {user_id} assigned to group {group_id} successfully"}
         
     except Exception as e:
-        print(f"❌ Error assigning user to group: {str(e)}")
+        print(f"? Error assigning user to group: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/assign-scale42-users", tags=["User Management"])
@@ -5243,7 +5338,7 @@ def assign_scale42_users(current_user: dict = Depends(get_current_user)):
                 groups_json = json.dumps(current_groups)
                 cursor.execute("UPDATE users SET groups = %s WHERE id = %s", (groups_json, user_id))
                 updated_count += 1
-                print(f"✅ Assigned user {user['email']} (ID: {user_id}) to Scale42 group")
+                print(f"? Assigned user {user['email']} (ID: {user_id}) to Scale42 group")
         
         conn.commit()
         cursor.close()
@@ -5256,7 +5351,7 @@ def assign_scale42_users(current_user: dict = Depends(get_current_user)):
         }
         
     except Exception as e:
-        print(f"❌ Error assigning Scale-42 users: {str(e)}")
+        print(f"? Error assigning Scale-42 users: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/assign-user-to-scale42/{user_email}", tags=["User Management"])
@@ -5301,7 +5396,7 @@ def assign_specific_user_to_scale42(user_email: str, current_user: dict = Depend
             cursor.close()
             conn.close()
             
-            print(f"✅ Assigned user {user_email} (ID: {user_id}) to Scale42 group")
+            print(f"? Assigned user {user_email} (ID: {user_id}) to Scale42 group")
             
             return {
                 "message": f"User {user_email} assigned to Scale42 group successfully",
@@ -5318,7 +5413,7 @@ def assign_specific_user_to_scale42(user_email: str, current_user: dict = Depend
             }
         
     except Exception as e:
-        print(f"❌ Error assigning user {user_email} to Scale42: {str(e)}")
+        print(f"? Error assigning user {user_email} to Scale42: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fix-scale42-users", tags=["User Management"])
@@ -5352,7 +5447,7 @@ def fix_scale42_users(current_user: dict = Depends(get_current_user)):
         cursor.close()
         conn.close()
         
-        print(f"✅ Fixed {updated_count} Scale-42 users")
+        print(f"? Fixed {updated_count} Scale-42 users")
         
         return {
             "message": f"Fixed {updated_count} Scale-42 users",
@@ -5361,7 +5456,7 @@ def fix_scale42_users(current_user: dict = Depends(get_current_user)):
         }
         
     except Exception as e:
-        print(f"❌ Error fixing Scale-42 users: {str(e)}")
+        print(f"? Error fixing Scale-42 users: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api-assign-user-to-scale42/{email}")
@@ -5445,10 +5540,10 @@ def migrate_display_order():
         try:
             cursor.execute("ALTER TABLE pages ADD COLUMN display_order INT DEFAULT 0 AFTER description")
             conn.commit()
-            message = "✅ Added display_order column to pages table"
+            message = "? Added display_order column to pages table"
         except Exception as e:
             if "Duplicate column name" in str(e):
-                message = "✅ display_order column already exists"
+                message = "? display_order column already exists"
             else:
                 raise e
         
@@ -5468,7 +5563,7 @@ def migrate_display_order():
         return {"status": "success", "message": message}
         
     except Exception as e:
-        print(f"❌ Error migrating display_order: {str(e)}")
+        print(f"? Error migrating display_order: {str(e)}")
         if 'conn' in locals() and 'cursor' in locals():
             try:
                 cursor.close()
