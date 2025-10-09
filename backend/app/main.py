@@ -5719,6 +5719,7 @@ def setup_original_pages():
             ("Schema", "/schema", "Database", "Projects", False, None, "Database schema"),
             ("Map", "/map", "Map", "Projects", False, None, "Project map view"),
             ("Hoyanger", "/hoyanger", "Building", "Projects", False, None, "Hoyanger specific page"),
+            ("Calendar", "/calendar", "Calendar", "Navigation", False, None, "Calendar events from multiple sources"),
             ("Accounts", "/accounts", "CreditCard", "Financial", False, None, "Account management"),
             ("NocoDb", "/tools/nocodb", "Database", "Tools", False, None, "NocoDb admin"),
             ("N8N", "/tools/n8n", "Workflow", "Tools", False, None, "N8N automation"),

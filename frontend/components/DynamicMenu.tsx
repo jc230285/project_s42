@@ -18,7 +18,8 @@ import {
   Zap,
   FolderOpen,
   Shield,
-  Wrench
+  Wrench,
+  Calendar
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 
@@ -55,6 +56,7 @@ const iconMap: { [key: string]: any } = {
   'FolderOpen': FolderOpen,
   'Shield': Shield,
   'Tool': Wrench,
+  'Calendar': Calendar,
   'ExternalLink': ExternalLink
 };
 
@@ -138,7 +140,19 @@ export function DynamicMenu({
       });
 
       if (response.ok) {
-        const pages = await response.json();
+        const data = await response.json();
+        
+        // Check if the response is an error object or an array
+        if (data && typeof data === 'object' && 'error' in data) {
+          console.error('🔍 DynamicMenu: Backend returned error:', data.error);
+          console.warn('Could not load user pages due to error, falling back to public pages');
+          // Fall back to public pages
+          await fetchPublicPages();
+          return;
+        }
+        
+        // Ensure we have an array
+        const pages = Array.isArray(data) ? data : [];
         console.log('🔍 DynamicMenu: Fetched user pages:', pages.length, pages.map((p: Page) => `${p.name} (${p.category})`));
         console.log('🔍 DynamicMenu: Full page data:', JSON.stringify(pages, null, 2));
         
