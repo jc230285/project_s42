@@ -5,6 +5,10 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { hasUserGroup } from '@/lib/auth-utils';
 import toast from 'react-hot-toast';
 import { ExternalLink, X, Edit, Trash2, Save, Settings, Eye, EyeOff, GripVertical } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+// Import React Quill dynamically (client-side only)
+const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 
 interface TaskRecord {
   [key: string]: any;
@@ -90,9 +94,9 @@ function TasksPage() {
   const [sortBy, setSortBy] = useState<'sort-order' | 'due-date'>(() => {
     if (typeof document !== 'undefined') {
       const saved = document.cookie.split('; ').find(row => row.startsWith('tasks_sort_by='));
-      return (saved?.split('=')[1] as 'sort-order' | 'due-date') || 'sort-order';
+      return (saved?.split('=')[1] as 'sort-order' | 'due-date') || 'due-date';
     }
-    return 'sort-order';
+    return 'due-date';
   });
 
   // Tag filter states
@@ -101,8 +105,20 @@ function TasksPage() {
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterCustomTag, setFilterCustomTag] = useState<string>('');
 
-  // Status filter state - array of selected statuses
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(['Closed', 'On-Going', 'Waiting on External', 'Complete']);
+  // Status filter state - array of selected statuses with cookie persistence
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() => {
+    if (typeof document !== 'undefined') {
+      const saved = document.cookie.split('; ').find(row => row.startsWith('tasks_selected_statuses='));
+      if (saved) {
+        try {
+          return JSON.parse(decodeURIComponent(saved.split('=')[1]));
+        } catch (e) {
+          return ['On-Going', 'Waiting on External'];
+        }
+      }
+    }
+    return ['On-Going', 'Waiting on External'];
+  });
 
   // Create task state
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -110,6 +126,13 @@ function TasksPage() {
 
   // Check if user has Scale42 access
   const hasScale42Access = hasUserGroup(session, 'Scale42');
+  
+  // Save selected statuses to cookie whenever they change
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.cookie = `tasks_selected_statuses=${encodeURIComponent(JSON.stringify(selectedStatuses))}; path=/; max-age=31536000`;
+    }
+  }, [selectedStatuses]);
 
   // Cookie management functions
   const saveColumnSettings = (settings: ColumnSettings) => {
@@ -144,17 +167,60 @@ function TasksPage() {
 
   const getDefaultColumns = (record: TaskRecord) => {
     const allKeys = Object.keys(record);
-    const excludeFields = ['Id', 'id', 'CreatedAt', 'created_at', 'UpdatedAt', 'updated_at'];
+    const excludeFields = ['Id', 'id', 'CreatedAt', 'created_at', 'UpdatedAt', 'updated_at', 'Sort Order'];
     const filteredKeys = allKeys.filter(key => !excludeFields.includes(key));
     
-    // Move WorkOrderNo to the front if it exists
-    const workOrderIndex = filteredKeys.findIndex(key => key === 'WorkOrderNo');
-    if (workOrderIndex > 0) {
-      const workOrderNo = filteredKeys.splice(workOrderIndex, 1)[0];
-      filteredKeys.unshift(workOrderNo);
+    // Define the desired column order
+    const desiredOrder = [
+      'Task Name',
+      'Task Description', 
+      'End datetime',
+      'Lead',
+      'Assignees',
+      'Tags',
+      'Status'
+    ];
+    
+    // Separate columns into ordered and remaining
+    const orderedColumns: string[] = [];
+    const remainingColumns: string[] = [];
+    
+    desiredOrder.forEach(col => {
+      if (filteredKeys.includes(col)) {
+        orderedColumns.push(col);
+      }
+    });
+    
+    filteredKeys.forEach(key => {
+      if (!desiredOrder.includes(key)) {
+        remainingColumns.push(key);
+      }
+    });
+    
+    // Return ordered columns first, then remaining
+    return [...orderedColumns, ...remainingColumns];
+  };
+
+  // Format column name with (WIP) label for work-in-progress fields
+  const formatColumnName = (columnName: string): string => {
+    const wipColumns = [
+      'Projects_id',
+      'Contacts_id', 
+      'Contacts',
+      'Milestone',
+      'Tasks_id',
+      'Dependencies',
+      'Attachments',
+      'group',
+      'Tasks',
+      'Projects'
+    ];
+    
+    if (wipColumns.includes(columnName)) {
+      return `${columnName} (WIP)`;
     }
     
-    return filteredKeys;
+    return columnName;
   };
 
   const makeAuthenticatedRequest = async (url: string, options: RequestInit = {}) => {
@@ -366,17 +432,17 @@ function TasksPage() {
         }
         return 0;
       } else if (sortBy === 'due-date') {
-        // Sort by Due Date: null values first, then oldest dates first
-        const dueDateA = a['Required End'] ?? a.RequiredEnd ?? a['Due Date'] ?? a.DueDate;
-        const dueDateB = b['Required End'] ?? b.RequiredEnd ?? b['Due Date'] ?? b.DueDate;
+        // Sort by Due Date: null/empty values first, then oldest dates first
+        const dueDateA = a['End datetime'] ?? a['Required End'] ?? a.RequiredEnd ?? a['Due Date'] ?? a.DueDate ?? a.endDatetime;
+        const dueDateB = b['End datetime'] ?? b['Required End'] ?? b.RequiredEnd ?? b['Due Date'] ?? b.DueDate ?? b.endDatetime;
         
-        // Both null - maintain order
+        // Both null/empty - maintain order
         if (!dueDateA && !dueDateB) return 0;
         
-        // A is null, B has value - A comes first
+        // A is null/empty, B has value - A comes first
         if (!dueDateA) return -1;
         
-        // B is null, A has value - B comes first
+        // B is null/empty, A has value - B comes first
         if (!dueDateB) return 1;
         
         // Both have values - sort oldest first (ascending)
@@ -590,11 +656,81 @@ function TasksPage() {
     }
   };
 
+  // Check if a date is overdue (in the past)
+  const isOverdue = (dateString: any): boolean => {
+    if (!dateString) return false;
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return false;
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Set to start of today
+      
+      return date.getTime() < today.getTime();
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // Format date with overdue indicator
+  const formatDateWithOverdue = (dateString: any, fieldName: string) => {
+    const formattedDate = formatDate(dateString);
+    if (formattedDate === '-') return formattedDate;
+    
+    // Check if this is an end date field and if it's overdue
+    const isEndDateField = fieldName === 'End datetime' || fieldName === 'Required End' || fieldName === 'Due Date';
+    const overdue = isEndDateField && isOverdue(dateString);
+    
+    return (
+      <span className="flex items-center gap-1.5">
+        {formattedDate}
+        {overdue && (
+          <span className="w-2 h-2 rounded-full bg-red-500" title="Overdue"></span>
+        )}
+      </span>
+    );
+  };
+
   // Truncate text to specified length
   const truncateText = (text: string, maxLength: number = 50) => {
     if (!text) return '-';
     const str = String(text);
     return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
+  };
+
+  // Render HTML content and make URLs clickable
+  const renderRichText = (html: string, maxLength: number = 100) => {
+    if (!html) return '-';
+    
+    // Strip HTML tags for length calculation and display
+    const stripped = html.replace(/<[^>]*>/g, '').trim();
+    if (!stripped) return '-';
+    
+    // Truncate if too long
+    const truncated = stripped.length > maxLength 
+      ? stripped.substring(0, maxLength) + '...' 
+      : stripped;
+    
+    return truncated;
+  };
+
+  // Render full HTML content with clickable links
+  const renderFullRichText = (html: string) => {
+    if (!html) return <span className="text-muted-foreground">No description</span>;
+    
+    return (
+      <div 
+        className="prose prose-sm max-w-none dark:prose-invert"
+        dangerouslySetInnerHTML={{ __html: html }}
+        onClick={(e) => {
+          // Allow links to work in the modal
+          if ((e.target as HTMLElement).tagName === 'A') {
+            e.stopPropagation();
+          }
+        }}
+      />
+    );
   };
 
   // Handle row click to open edit modal
@@ -629,16 +765,12 @@ function TasksPage() {
       console.log('🗑️ Deleting task with ID:', recordId);
       
       const response = await makeAuthenticatedRequest(
-        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/nocodb/delete-row`,
+        `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/nocodb/delete-row?table_id=m00xhbj3bkktc13&row_id=${recordId}`,
         {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            table_id: 'm00xhbj3bkktc13',
-            row_id: String(recordId)
-          }),
         }
       );
 
@@ -646,7 +778,9 @@ function TasksPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        throw new Error(errorData.detail || `Failed to delete task (${response.status})`);
+        toast.error(errorData.detail || `Failed to delete task (${response.status})`);
+        console.error('Error details:', response.status, errorData);
+        return;
       }
 
       toast.success('Task deleted successfully');
@@ -669,8 +803,9 @@ function TasksPage() {
       return;
     }
 
-    const recordId = editedRecord.id || editedRecord.Id || selectedRecord.id || selectedRecord.Id;
-    if (!recordId) {
+    // Get record ID - use explicit check for undefined/null, not falsy check (0 is valid)
+    const recordId = editedRecord.id ?? editedRecord.Id ?? selectedRecord.id ?? selectedRecord.Id;
+    if (recordId === undefined || recordId === null) {
       toast.error('Record ID not found');
       console.error('Record missing id:', editedRecord, selectedRecord);
       return;
@@ -682,11 +817,20 @@ function TasksPage() {
 
       const tableId = 'm00xhbj3bkktc13';
 
-      // Prepare the field data (exclude metadata fields)
+      // Prepare the field data (exclude metadata fields and system columns)
       const fieldData: any = {};
+      const systemFields = [
+        'id', 'Id', 
+        'created_at', 'CreatedAt', 
+        'updated_at', 'UpdatedAt',
+        'Tasks',  // System column that cannot be updated
+        'Projects',  // System column
+        'Sort Order'  // System column
+      ];
+      
       Object.keys(editedRecord).forEach(key => {
         // Skip system fields that shouldn't be updated
-        if (!['id', 'Id', 'created_at', 'CreatedAt', 'updated_at', 'UpdatedAt'].includes(key)) {
+        if (!systemFields.includes(key)) {
           fieldData[key] = editedRecord[key];
         }
       });
@@ -1945,7 +2089,10 @@ function TasksPage() {
             <div className="flex gap-2 items-center flex-wrap">
               <span className="text-sm text-muted-foreground font-medium shrink-0">Sort:</span>
               <button
-                onClick={() => setSortBy('sort-order')}
+                onClick={() => {
+                  setSortBy('sort-order');
+                  document.cookie = `tasks_sort_by=sort-order; path=/; max-age=31536000`;
+                }}
                 className={`px-3 py-1.5 text-sm font-medium rounded transition-all ${
                   sortBy === 'sort-order'
                     ? 'bg-primary text-primary-foreground shadow-sm'
@@ -1955,7 +2102,10 @@ function TasksPage() {
                 Order
               </button>
               <button
-                onClick={() => setSortBy('due-date')}
+                onClick={() => {
+                  setSortBy('due-date');
+                  document.cookie = `tasks_sort_by=due-date; path=/; max-age=31536000`;
+                }}
                 className={`px-3 py-1.5 text-sm font-medium rounded transition-all ${
                   sortBy === 'due-date'
                     ? 'bg-primary text-primary-foreground shadow-sm'
@@ -2141,7 +2291,10 @@ function TasksPage() {
         <div className="flex gap-2 border-b border-border items-center justify-between">
           <div className="flex gap-2">
             <button
-              onClick={() => setActiveTab('my-tasks')}
+              onClick={() => {
+                setActiveTab('my-tasks');
+                document.cookie = `tasks_active_tab=my-tasks; path=/; max-age=31536000`;
+              }}
               className={`px-6 py-3 font-medium text-sm transition-all border-b-2 ${
                 activeTab === 'my-tasks'
                   ? 'border-primary text-primary bg-primary/5'
@@ -2156,7 +2309,10 @@ function TasksPage() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab('watching')}
+              onClick={() => {
+                setActiveTab('watching');
+                document.cookie = `tasks_active_tab=watching; path=/; max-age=31536000`;
+              }}
               className={`px-6 py-3 font-medium text-sm transition-all border-b-2 ${
                 activeTab === 'watching'
                   ? 'border-primary text-primary bg-primary/5'
@@ -2171,7 +2327,10 @@ function TasksPage() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab('all')}
+              onClick={() => {
+                setActiveTab('all');
+                document.cookie = `tasks_active_tab=all; path=/; max-age=31536000`;
+              }}
               className={`px-6 py-3 font-medium text-sm transition-all border-b-2 ${
                 activeTab === 'all'
                   ? 'border-primary text-primary bg-primary/5'
@@ -2199,7 +2358,7 @@ function TasksPage() {
         </div>
 
         {/* Tasks Table */}
-        <div className="bg-card rounded-lg border border-border">
+        <div className="bg-card rounded-lg border border-border overflow-hidden">
           {loading ? (
             <div className="p-6 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
@@ -2222,10 +2381,14 @@ function TasksPage() {
           ) : (
             <>
               {/* Desktop Table - Hidden on mobile */}
-              <div className="hidden lg:block relative overflow-x-auto" style={{ maxHeight: '600px' }}>
-                <table className="w-full divide-y divide-border">
+              <div className="hidden lg:block relative overflow-auto" style={{ maxHeight: '600px' }}>
+                <table className="w-full divide-y divide-border" style={{ minWidth: 'max-content' }}>
                   <thead className="bg-muted sticky top-0 z-10">
                     <tr>
+                      {/* Actions column - First column */}
+                      <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap w-0">
+                        Actions
+                      </th>
                       {/* Drag handle column - Only show when sorting by order */}
                       {sortBy === 'sort-order' && (
                         <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap w-8">
@@ -2239,13 +2402,10 @@ function TasksPage() {
                             key={key} 
                             className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap"
                           >
-                            {key}
+                            {formatColumnName(key)}
                           </th>
                         );
                       })}
-                      <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                        Actions
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
@@ -2268,6 +2428,29 @@ function TasksPage() {
                             onDragLeave={sortBy === 'sort-order' ? (e) => handleRowDragLeave(e) : undefined}
                             onDrop={sortBy === 'sort-order' ? (e) => handleRowDrop(e, record) : undefined}
                           >
+                          {/* Actions - First column */}
+                          <td className="px-2 py-3 text-sm text-foreground whitespace-nowrap w-0">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRowClick(record);
+                                }}
+                                className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                                title="Edit"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteClick(record, e)}
+                                className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                          
                           {/* Drag handle - Only show when sorting by order */}
                           {sortBy === 'sort-order' && (
                             <td 
@@ -2403,36 +2586,15 @@ function TasksPage() {
                                     : isUserSelect
                                     ? renderUserAvatars(value, 'sm')
                                     : isDateField
-                                    ? formatDate(value)
+                                    ? formatDateWithOverdue(value, key)
+                                    : key === 'Task Description'
+                                    ? renderRichText(String(value || ''))
                                     : truncateText(String(value || '-'))}
                                 </span>
                               )}
                             </td>
                           );
                         })}
-                        
-                        {/* Actions */}
-                        <td className="px-4 py-3 text-sm text-foreground whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRowClick(record);
-                              }}
-                              className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
-                              title="Edit"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteClick(record, e)}
-                              className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                         </React.Fragment>
                       );
@@ -2498,7 +2660,7 @@ function TasksPage() {
                         {/* Description */}
                         {description && (
                           <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                            {String(description)}
+                            {renderRichText(String(description), 150)}
                           </p>
                         )}
 
@@ -2525,9 +2687,14 @@ function TasksPage() {
                             </div>
                           )}
                           {dueDate && (
-                            <div>
+                            <div className="flex items-center gap-1">
                               <span className="text-muted-foreground">Due:</span>
-                              <span className="ml-1 font-medium text-foreground">{formatDate(dueDate)}</span>
+                              <span className="ml-1 font-medium text-foreground flex items-center gap-1.5">
+                                {formatDate(dueDate)}
+                                {isOverdue(dueDate) && (
+                                  <span className="w-2 h-2 rounded-full bg-red-500" title="Overdue"></span>
+                                )}
+                              </span>
                             </div>
                           )}
                         </div>
@@ -2587,7 +2754,7 @@ function TasksPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {Object.keys(editedRecord).map((key) => {
                     // Skip certain system fields
-                    if (['Id', 'id', 'CreatedAt', 'UpdatedAt', 'created_at', 'updated_at'].includes(key)) return null;
+                    if (['Id', 'id', 'CreatedAt', 'UpdatedAt', 'created_at', 'updated_at', 'Sort Order'].includes(key)) return null;
                     
                     // Check field type
                     const isDateField = key.toLowerCase().includes('date') || key.toLowerCase().includes('time');
@@ -2604,7 +2771,7 @@ function TasksPage() {
                     return (
                       <div key={key} className={key === 'Task Description' ? 'md:col-span-2' : ''}>
                         <label className="block text-sm font-medium text-muted-foreground mb-1">
-                          {key}
+                          {formatColumnName(key)}
                         </label>
                         
                         {/* Read-only fields */}
@@ -2689,14 +2856,24 @@ function TasksPage() {
                             onChange={(e) => handleFieldChange(key, e.target.value)}
                             className="w-full px-3 py-2 border border-border rounded bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                           />
-                        ) : /* Task Description - textarea */
+                        ) : /* Task Description - Rich text editor */
                         key === 'Task Description' ? (
-                          <textarea
-                            value={editedRecord[key] || ''}
-                            onChange={(e) => handleFieldChange(key, e.target.value)}
-                            rows={4}
-                            className="w-full px-3 py-2 border border-border rounded bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-y"
-                          />
+                          <div className="quill-wrapper">
+                            <ReactQuill
+                              value={editedRecord[key] || ''}
+                              onChange={(content) => handleFieldChange(key, content)}
+                              theme="snow"
+                              className="bg-background rounded border border-border"
+                              modules={{
+                                toolbar: [
+                                  ['bold', 'italic', 'underline', 'strike'],
+                                  ['link'],
+                                  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                  ['clean']
+                                ]
+                              }}
+                            />
+                          </div>
                         ) : /* Regular text fields */
                         (
                           <input
@@ -2814,7 +2991,7 @@ function TasksPage() {
                       }`}
                     >
                       <GripVertical className="w-5 h-5 text-muted-foreground" />
-                      <span className="flex-1 font-medium text-foreground">{column}</span>
+                      <span className="flex-1 font-medium text-foreground">{formatColumnName(column)}</span>
                       <button
                         onClick={() => toggleColumnVisibility(column)}
                         className={`p-1.5 rounded transition-colors ${

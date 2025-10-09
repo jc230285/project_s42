@@ -162,7 +162,7 @@
   }
 
   .ql-toolbar {
-    background: #f3f4f6 !important;
+    background: #374151 !important;
     border-top-left-radius: 0.375rem;
     border-top-right-radius: 0.375rem;
     flex-shrink: 0;
@@ -183,48 +183,48 @@
   /* Make toolbar icons more visible */
   .ql-toolbar button,
   .ql-toolbar .ql-picker-label {
-    color: #1f2937 !important;
+    color: #ffffff !important;
   }
 
   .ql-toolbar button:hover,
   .ql-toolbar .ql-picker-label:hover {
-    color: #000 !important;
+    color: #e5e7eb !important;
   }
 
   .ql-toolbar button svg,
   .ql-toolbar .ql-picker-label svg {
-    stroke: #1f2937 !important;
+    stroke: #ffffff !important;
   }
 
   .ql-toolbar button:hover svg,
   .ql-toolbar .ql-picker-label:hover svg {
-    stroke: #000 !important;
+    stroke: #e5e7eb !important;
   }
 
   .ql-toolbar .ql-stroke {
-    stroke: #1f2937 !important;
+    stroke: #ffffff !important;
   }
 
   .ql-toolbar .ql-fill {
-    fill: #1f2937 !important;
+    fill: #ffffff !important;
   }
 
   .ql-toolbar button:hover .ql-stroke {
-    stroke: #000 !important;
+    stroke: #e5e7eb !important;
   }
 
   .ql-toolbar button:hover .ql-fill {
-    fill: #000 !important;
+    fill: #e5e7eb !important;
   }
 
   .ql-toolbar button.ql-active .ql-stroke,
   .ql-toolbar .ql-picker-label.ql-active .ql-stroke {
-    stroke: #2563eb !important;
+    stroke: #60a5fa !important;
   }
 
   .ql-toolbar button.ql-active .ql-fill,
   .ql-toolbar .ql-picker-label.ql-active .ql-fill {
-    fill: #2563eb !important;
+    fill: #60a5fa !important;
   }
 
   /* Dark mode adjustments for Quill */

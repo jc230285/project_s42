@@ -2,6 +2,7 @@
 "use client";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { hasUserGroup } from '@/lib/auth-utils';
 import toast from 'react-hot-toast';
@@ -12,6 +13,8 @@ interface TableRecord {
 
 export default function HomePage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [tableData, setTableData] = useState<TableRecord[]>([]);
   const [activityData, setActivityData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,6 +24,17 @@ export default function HomePage() {
 
   // Check if user has Scale42 access
   const hasScale42Access = hasUserGroup(session, 'Scale42');
+
+  // Handle callbackUrl redirect after login
+  useEffect(() => {
+    if (status === 'authenticated' && searchParams) {
+      const callbackUrl = searchParams.get('callbackUrl');
+      if (callbackUrl && callbackUrl !== '/' && callbackUrl !== '') {
+        console.log('📍 Redirecting to callbackUrl:', callbackUrl);
+        router.push(callbackUrl);
+      }
+    }
+  }, [status, searchParams, router]);
 
   console.log('🔍 HomePage Debug:', {
     sessionStatus: status,

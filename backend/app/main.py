@@ -2622,6 +2622,86 @@ async def update_nocodb_row(
         print(f"? Error in update_nocodb_row: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/nocodb/delete-row", tags=["nocodb"])
+async def delete_nocodb_row(
+    table_id: str = Query(...),
+    row_id: str = Query(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a row from NocoDB table using v3 API"""
+    try:
+        # Get user's personal API token if available, otherwise use environment token
+        user_token = None
+        user_email = current_user.get('email')
+        print(f"🗑️ DELETE ENDPOINT - Getting API token for user: {user_email}")
+        
+        if user_email:
+            try:
+                # Get user's NocoDB token from database
+                conn = mysql.connector.connect(
+                    host=os.getenv("DB_HOST", "10.1.8.51"),
+                    user=os.getenv("DB_USER", "s42project"),
+                    password=os.getenv("DB_PASSWORD", "s42project"),
+                    database=os.getenv("DB_NAME", "nocodb"),
+                    port=int(os.getenv("DB_PORT", "3306")),
+                )
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT nocodb_api FROM users WHERE email = %s", (user_email,))
+                user_data = cursor.fetchone()
+                print(f"📊 DELETE ENDPOINT - Database query result for {user_email}: {user_data}")
+                if user_data and user_data['nocodb_api']:
+                    user_token = user_data['nocodb_api']
+                    print(f"✅ DELETE ENDPOINT - Using user-specific NocoDB token for {user_email}")
+                else:
+                    print(f"⚠️ DELETE ENDPOINT - No user-specific token found for {user_email}, using admin token")
+                cursor.close()
+                conn.close()
+            except Exception as e:
+                print(f"Error fetching user token: {e}")
+        
+        # Use user token if available, otherwise fall back to environment token
+        api_token = user_token or os.getenv("NOCODB_API_TOKEN")
+        
+        if not api_token:
+            raise HTTPException(status_code=500, detail="No API token available")
+        
+        # NocoDB v3 API endpoint format: /api/v3/data/{base_id}/{table_id}/records
+        base_id = os.getenv("NOCODB_BASE_ID")
+        
+        nocodb_url = f"{os.getenv('NOCODB_API_URL')}/api/v3/data/{base_id}/{table_id}/records"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "xc-token": api_token
+        }
+        
+        # NocoDB v3 API requires id in the payload for delete
+        v3_payload = {
+            "id": row_id
+        }
+        
+        # Make the delete request
+        print(f"🗑️ Making NocoDB v3 delete request:")
+        print(f"   URL: {nocodb_url}")
+        print(f"   Payload: {v3_payload}")
+        print(f"   Token type: {'user' if user_token else 'admin'}")
+        print(f"   Using token: {str(api_token)[:20]}...")
+        
+        response = requests.delete(nocodb_url, json=v3_payload, headers=headers, verify=False)
+        
+        print(f"📡 NocoDB Response: {response.status_code}")
+        if response.status_code != 200:
+            print(f"❌ Error response: {response.text}")
+        
+        if response.status_code == 200:
+            return {"success": True, "message": "Row deleted successfully"}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"NocoDB API error: {response.text}")
+            
+    except Exception as e:
+        print(f"❌ Error in delete_nocodb_row: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/nocodb/verify-update", tags=["nocodb"])
 async def verify_nocodb_update(
     table_id: str = Query(...),

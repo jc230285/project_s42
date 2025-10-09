@@ -32,6 +32,7 @@ interface Page {
   is_external: boolean;
   url?: string;
   description?: string;
+  display_order: number;
 }
 
 interface GroupedPages {
@@ -156,20 +157,6 @@ export function DynamicMenu({
     }
   };
 
-  const groupPagesByCategory = (pages: Page[]): GroupedPages => {
-    const grouped = pages.reduce((groups, page) => {
-      const category = page.category || 'Other';
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(page);
-      return groups;
-    }, {} as GroupedPages);
-    
-    console.log('🔍 DynamicMenu: Grouped pages by category:', Object.keys(grouped).map(cat => `${cat}: ${grouped[cat].length} pages`));
-    return grouped;
-  };
-
   const handlePageClick = (page: Page) => {
     if (page.is_external && page.url) {
       window.open(page.url, '_blank', 'noopener,noreferrer');
@@ -196,75 +183,63 @@ export function DynamicMenu({
     );
   }
 
-  const groupedPages = groupPagesByCategory(userPages);
-
-  // Category ordering - put predefined categories first, then any others alphabetically
-  const categoryOrder = ['Navigation', 'Projects', 'Hoyanger', 'Financial', 'Tools', 'Management', 'Debug', 'Development', 'Settings', 'External'];
-  const predefinedCategories = categoryOrder.filter(cat => groupedPages[cat]);
-  const otherCategories = Object.keys(groupedPages)
-    .filter(cat => !categoryOrder.includes(cat))
-    .sort();
-  const orderedCategories = [...predefinedCategories, ...otherCategories];
+  // Sort pages by display_order (already sorted from backend, but ensuring it here)
+  const sortedPages = [...userPages].sort((a, b) => a.display_order - b.display_order);
 
   return (
     <div className="space-y-6">
-      {orderedCategories.map((category) => (
-        <div key={category} className="space-y-1">
-          {/* Category Header */}
-          {isSidebarOpen && (
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
-              {category}
-            </h3>
-          )}
-          
-          {/* Category Items */}
-          <div className="space-y-1">
-            {groupedPages[category].map((page) => {
-              const IconComponent = iconMap[page.icon] || Globe;
-              
-              if (page.is_external && page.url) {
-                return (
-                  <button
-                    key={page.Id || page.id}
-                    onClick={() => handlePageClick(page)}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground group ${
-                      !isSidebarOpen ? 'justify-center' : ''
-                    }`}
-                    title={!isSidebarOpen ? page.name : undefined}
-                  >
-                    <IconComponent className="h-5 w-5 flex-shrink-0" />
-                    {isSidebarOpen && (
-                      <>
-                        <span className="flex-1 text-left">{page.name}</span>
-                        <ExternalLink className="h-3 w-3 opacity-50 group-hover:opacity-100" />
-                      </>
-                    )}
-                  </button>
-                );
-              } else {
-                return (
-                  <Link
-                    key={page.Id || page.id}
-                    href={page.path}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground ${
-                      !isSidebarOpen ? 'justify-center' : ''
-                    }`}
-                    title={!isSidebarOpen ? page.name : undefined}
-                  >
-                    <IconComponent className="h-5 w-5 flex-shrink-0" />
-                    {isSidebarOpen && (
-                      <span className="flex-1">{page.name}</span>
-                    )}
-                  </Link>
-                );
-              }
-            })}
+      {sortedPages.map((page, index) => {
+        const IconComponent = iconMap[page.icon] || Globe;
+        
+        // Check if we need to show a category header (when category changes from previous page)
+        const showCategoryHeader = index === 0 || sortedPages[index - 1].category !== page.category;
+        
+        return (
+          <div key={page.Id || page.id}>
+            {/* Category Header - only show when category changes */}
+            {showCategoryHeader && isSidebarOpen && (
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
+                {page.category}
+              </h3>
+            )}
+            
+            {/* Page Item */}
+            {page.is_external && page.url ? (
+              <button
+                onClick={() => handlePageClick(page)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground group ${
+                  !isSidebarOpen ? 'justify-center' : ''
+                }`}
+                title={!isSidebarOpen ? page.name : undefined}
+              >
+                <IconComponent className="h-5 w-5 flex-shrink-0" />
+                {isSidebarOpen && (
+                  <>
+                    <span className="flex-1 text-left">{page.name}</span>
+                    <ExternalLink className="h-3 w-3 opacity-50 group-hover:opacity-100" />
+                  </>
+                )}
+              </button>
+            ) : (
+              <Link
+                href={page.path}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground ${
+                  !isSidebarOpen ? 'justify-center' : ''
+                }`}
+                title={!isSidebarOpen ? page.name : undefined}
+              >
+                <IconComponent className="h-5 w-5 flex-shrink-0" />
+                {isSidebarOpen && (
+                  <span className="flex-1">{page.name}</span>
+                )}
+              </Link>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
       
       {/* Fallback message if no pages */}
-      {userPages.length === 0 && (
+      {sortedPages.length === 0 && (
         <div className="p-4 text-center text-muted-foreground">
           {isSidebarOpen ? (
             <div>

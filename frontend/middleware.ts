@@ -34,9 +34,9 @@ export async function middleware(request: NextRequest) {
 
   // If no token, redirect to login
   if (!token) {
-    const loginUrl = new URL('/api/auth/signin', request.url);
-    loginUrl.searchParams.set('callbackUrl', pathname);
-    return NextResponse.redirect(loginUrl);
+    const url = new URL('/', request.url);
+    url.searchParams.set('callbackUrl', pathname);
+    return NextResponse.redirect(url);
   }
 
   // User is authenticated, allow the request to proceed
