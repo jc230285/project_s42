@@ -1,26 +1,45 @@
 version: "3.9"
 services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    env_file:
-      - ./.env
-    ports:
-      - "3150:3000"
-    depends_on:
-      - backend
-    restart: unless-stopped
-    networks:
-      - db-net
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    env_file:
-      - ./.env
-    ports:
-      - "8150:8000"
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_PORT=${MYSQL_PORT}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - NOCODB_API_URL=${NOCODB_API_URL}
+      - NOCODB_API_TOKEN=${NOCODB_API_TOKEN}
+      - NOCODB_BASE_ID=${NOCODB_BASE_ID}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL}
+    expose:
+      - "8000"
+    restart: unless-stopped
+    networks:
+      - db-net
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXT_PUBLIC_BACKEND_BASE_URL=${NEXT_PUBLIC_BACKEND_BASE_URL}
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXT_PUBLIC_NOCODB_API_URL=${NEXT_PUBLIC_NOCODB_API_URL}
+      - NOCODB_API_TOKEN=${NOCODB_API_TOKEN}
+      - NOCODB_BASE_ID=${NOCODB_BASE_ID}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    expose:
+      - "3000"
+    depends_on:
+      - backend
     restart: unless-stopped
     networks:
       - db-net
